@@ -19,6 +19,12 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 }
 
+class PythonFunctionCodeLens extends vscode.CodeLens {
+	constructor(range: vscode.Range, public readonly document: vscode.TextDocument, public readonly functionRange: vscode.Range) {
+		super(range);
+	}
+}
+
 class PythonFunctionCodeLensProvider implements vscode.CodeLensProvider {
 	provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
 		const lenses: vscode.CodeLens[] = [];
@@ -45,15 +51,24 @@ class PythonFunctionCodeLensProvider implements vscode.CodeLensProvider {
 				end = j;
 			}
 
-			const range = new vscode.Range(i, 0, end, document.lineAt(end).text.length);
-			lenses.push(new vscode.CodeLens(new vscode.Range(i, 0, i, 0), {
-				title: 'Generate Invariant-Based Documentation',
-				command: 'invariant-based-documentation-generator.generator',
-				arguments: [document.getText(range)]
-			}));
+			const functionRange = new vscode.Range(i, 0, end, document.lineAt(end).text.length);
+			lenses.push(new PythonFunctionCodeLens(new vscode.Range(i, 0, i, 0), document, functionRange));
 		}
 
 		return lenses;
+	}
+
+	resolveCodeLens(codeLens: vscode.CodeLens): vscode.CodeLens | null {
+		if (!(codeLens instanceof PythonFunctionCodeLens)) {
+			return null;
+		}
+
+		codeLens.command = {
+			title: 'Generate Invariant-Based Documentation',
+			command: 'invariant-based-documentation-generator.generator',
+			arguments: [codeLens.document.getText(codeLens.functionRange)]
+		};
+		return codeLens;
 	}
 }
 
