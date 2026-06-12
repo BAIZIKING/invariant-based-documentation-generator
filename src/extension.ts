@@ -37,6 +37,10 @@ class PythonFunctionCodeLensProvider implements vscode.CodeLensProvider {
 			}
 
 			const defIndent = match[1].length;
+
+			// Pull in any decorator lines stacked directly above the def line
+			const start = this.findDecoratorStart(document, i, defIndent);
+
 			let end = i;
 
 			// The function body is every following line indented deeper than the def line
@@ -51,11 +55,63 @@ class PythonFunctionCodeLensProvider implements vscode.CodeLensProvider {
 				end = j;
 			}
 
-			const functionRange = new vscode.Range(i, 0, end, document.lineAt(end).text.length);
-			lenses.push(new PythonFunctionCodeLens(new vscode.Range(i, 0, i, 0), document, functionRange));
+			const functionRange = new vscode.Range(start, 0, end, document.lineAt(end).text.length);
+			lenses.push(new PythonFunctionCodeLens(new vscode.Range(start, 0, start, 0), document, functionRange));
 		}
 
 		return lenses;
+	}
+
+	// Walks upward from a def line over any decorators (including multi-line ones)
+	// and returns the line where the decorated construct begins.
+	private findDecoratorStart(document: vscode.TextDocument, defLine: number, defIndent: number): number {
+		let start = defLine;
+		let depth = 0; // unmatched closing brackets seen while scanning upward
+
+		for (let j = defLine - 1; j >= 0; j--) {
+			const line = document.lineAt(j);
+
+			// At a logical line boundary a blank line or a dedent ends the block
+			if (depth === 0) {
+				if (line.isEmptyOrWhitespace || line.firstNonWhitespaceCharacterIndex < defIndent) {
+					break;
+				}
+			}
+
+			depth += this.netClosingBrackets(line.text);
+
+			if (depth < 0) {
+				depth = 0; // tolerate unbalanced lines (e.g. brackets inside strings)
+			}
+
+			if (depth === 0) {
+				// This line is the head of a logical statement
+				const isDecorator =
+					line.firstNonWhitespaceCharacterIndex === defIndent && line.text.trim().startsWith('@');
+				if (isDecorator) {
+					start = j; // include it and keep looking for more decorators above
+				} else {
+					break;
+				}
+			}
+			// depth > 0: still inside a multi-line decorator's arguments, keep going up
+		}
+
+		return start;
+	}
+
+	// Net count of closing brackets minus opening brackets on a line.
+	// Used to detect when we are inside a multi-line decorator's argument list.
+	private netClosingBrackets(text: string): number {
+		let net = 0;
+		for (const ch of text) {
+			if (ch === ')' || ch === ']' || ch === '}') {
+				net++;
+			} else if (ch === '(' || ch === '[' || ch === '{') {
+				net--;
+			}
+		}
+		return net;
 	}
 
 	resolveCodeLens(codeLens: vscode.CodeLens): vscode.CodeLens | null {
