@@ -1,5 +1,14 @@
 {
   "name": "Invariant-Based Documentation Generator",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:22-bookworm",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "ms-vscode.extension-test-runner",
+        "anthropic.claude-code"
+      ]
+    }
+  },
   "postCreateCommand": "npm install"
 }
