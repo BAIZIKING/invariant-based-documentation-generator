@@ -2,18 +2,56 @@
   "name": "invariant-based-documentation-generator",
   "displayName": "Invariant-Based Documentation Generator",
   "description": "Given a function, this extensions figures out specifications and writes an invariant-based documentation and relevant test cases",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.120.0"
   },
   "categories": [
-    "Other"
+    "Debuggers", "Testing"
   ],
   "activationEvents": [
     "onLanguage:python"
   ],
   "main": "./out/extension.js",
-  "contributes": {},
+  "contributes": {
+    "commands": [
+      {
+        "command": "invariant-based-documentation-generator.setApiKey",
+        "title": "Invariant-Based Documentation Generator: Set Anthropic API Key"
+      },
+      {
+        "command": "invariant-based-documentation-generator.clearApiKey",
+        "title": "Invariant-Based Documentation Generator: Clear Anthropic API Key"
+      }
+    ],
+    "configuration": {
+      "title": "Invariant-Based Documentation Generator",
+      "properties": {
+        "invariant-based-documentation-generator.model": {
+          "type": "string",
+          "default": "claude-opus-4-8",
+          "enum": [
+            "claude-opus-4-8",
+            "claude-opus-4-7",
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+            "claude-fable-5"
+          ],
+          "enumDescriptions": [
+            "Claude Opus 4.8 — most capable Opus-tier model (recommended)",
+            "Claude Opus 4.7",
+            "Claude Opus 4.6",
+            "Claude Sonnet 4.6 — best balance of speed and intelligence",
+            "Claude Haiku 4.5 — fastest and most cost-effective",
+            "Claude Fable 5 — most capable model (premium pricing)"
+          ],
+          "markdownDescription": "The Claude model used to generate invariants, test cases, and documentation.",
+          "order": 1
+        }
+      }
+    }
+  },
   "capabilities" : {
     "codeLensProvider" : {
       "resolveProvider": "true"
@@ -26,6 +64,9 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.120.0",
