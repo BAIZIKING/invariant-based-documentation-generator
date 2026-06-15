@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { ClaudeConfig, query_claude } from './backend';
+import { ClaudeConfig, query_invariants, query_test_cases, query_documentation } from './backend';
 
 // Key under which the Anthropic API key is stored in VS Code's SecretStorage.
 // SecretStorage keeps the key encrypted and out of settings.json (which is plain
@@ -14,24 +14,34 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('invariant-based-documentation-generator.generator', (functionCode: string = '') => {
-			const panel = vscode.window.createWebviewPanel('IBDGenerator', 'Invariant-Based Documentation Generator', vscode.ViewColumn.Beside, { enableScripts: true });
+			const panel = vscode.window.createWebviewPanel('IBDGenerator', 'Invariant-Based Documentation Generator', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
 			panel.webview.html = getWebViewContent(functionCode);
 
 			panel.webview.onDidReceiveMessage(async (message) => {
-				if (message?.type !== 'generateInvariants') {
+				if (message?.type !== 'generate') {
 					return;
 				}
+				const step = message.step;
 				const config = await resolveClaudeConfig(context);
 				if (!config) {
-					panel.webview.postMessage({ type: 'invariantsError', text: 'No Anthropic API key is set.' });
+					panel.webview.postMessage({ type: 'result', step, ok: false, text: 'No Anthropic API key is set.' });
 					return;
 				}
 				try {
-					const text = await query_claude(message.code, config);
-					panel.webview.postMessage({ type: 'invariantsResult', text });
+					let text: string;
+					if (step === 'invariants') {
+						text = await query_invariants(message.code, config);
+					} else if (step === 'pbt') {
+						text = await query_test_cases(message.invariants, config);
+					} else if (step === 'documentation') {
+						text = await query_documentation(message.invariants, message.code, config);
+					} else {
+						return;
+					}
+					panel.webview.postMessage({ type: 'result', step, ok: true, text });
 				} catch (err) {
 					const detail = err instanceof Error ? err.message : String(err);
-					panel.webview.postMessage({ type: 'invariantsError', text: `Error: ${detail}` });
+					panel.webview.postMessage({ type: 'result', step, ok: false, text: `Error: ${detail}` });
 				}
 			}, undefined, context.subscriptions);
 
@@ -43,7 +53,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('invariant-based-documentation-generator.setApiKey', async () => {
 			const apiKey = await vscode.window.showInputBox({
 				title: 'Anthropic API Key',
-				prompt: 'Enter your Anthropic API key (sk-ant-...). It is stored securely in VS Code SecretStorage.',
+				prompt: 'Enter your Anthropic API key (sk-ant-...).',
 				placeHolder: 'sk-ant-...',
 				password: true,
 				ignoreFocusOut: true
@@ -262,6 +272,45 @@ function getWebViewContent(functionCode: string) {
         #actions button:hover {
             background-color: var(--vscode-button-hoverBackground);
         }
+        #flow {
+            display: flex;
+            align-items: stretch;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        #flow button {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            font-size: 11px;
+            color: #ffffff;
+            border: none;
+            padding: 4px 6px;
+        }
+        .flow-arrow {
+            flex: 0 0 auto;
+            align-self: center;
+        }
+        #flow button.current {
+            background-color: #1f6feb;
+        }
+        #flow button.completed {
+            background-color: #2ea043;
+            cursor: pointer;
+        }
+        #flow button.reachable {
+            background-color: #9e6a03;
+            cursor: pointer;
+        }
+        #flow button.unreachable {
+            background-color: #6e7681;
+        }
+        #flow button:disabled {
+            cursor: not-allowed;
+        }
         #result {
             flex: 1 1 auto;
             min-height: 0;
@@ -272,11 +321,20 @@ function getWebViewContent(functionCode: string) {
 </head>
 <body>
     <h1>Invariant-Based Documentation Generator</h1>
+    <div id="flow">
+        <button type="button" data-action="source" disabled>01 Source code</button>
+        <span class="flow-arrow">&rarr;</span>
+        <button type="button" data-action="invariants">02 Invariants</button>
+        <span class="flow-arrow">&rarr;</span>
+        <button type="button" data-action="pbt" disabled>03 PBT</button>
+        <span class="flow-arrow">&rarr;</span>
+        <button type="button" data-action="documentation" disabled>04 Documentation</button>
+    </div>
     <textarea id="code" spellcheck="false" wrap="off" placeholder="Source code goes here...">${escapeHtml(functionCode)}</textarea>
     <div id="actions">
         <button type="button" id="generate-invariants">Generate Invariants</button>
-        <button type="button">Generate Property-based test cases</button>
-        <button type="button">Generate documentation</button>
+        <button type="button" id="generate-pbt" hidden>Generate Property-based test cases</button>
+        <button type="button" id="generate-documentation" hidden>Generate documentation</button>
     </div>
     <h2 id="result-title">Invariants</h2>
     <div id="result"></div>
@@ -286,24 +344,107 @@ function getWebViewContent(functionCode: string) {
         const result = document.getElementById('result');
         const code = document.getElementById('code');
 
-        for (const btn of document.querySelectorAll('#actions button')) {
-            btn.addEventListener('click', () => {
-                const label = btn.textContent.replace(/^Generate\\s+/, '');
-                resultTitle.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+        const titles = {
+            source: 'Source code',
+            invariants: 'Invariants',
+            pbt: 'Property-based test cases',
+            documentation: 'Documentation'
+        };
+        // Generate steps in order — each one enables the next page on success.
+        const order = ['invariants', 'pbt', 'documentation'];
+        const generateIds = {
+            invariants: 'generate-invariants',
+            pbt: 'generate-pbt',
+            documentation: 'generate-documentation'
+        };
+        // Generated content per step, so the first-row buttons can switch the view.
+        const contents = { source: '', invariants: '', pbt: '', documentation: '' };
+        let current = 'invariants';
+
+        // Show the current page's generate button, plus the next step's button
+        // once the current step has generated but the next one hasn't yet. Hide
+        // the rest, so a page never shows two buttons for already-generated steps.
+        function updateButtons() {
+            const next = order[order.indexOf(current) + 1];
+            for (const step of order) {
+                const visible = step === current
+                    || (step === next && contents[current] !== '' && contents[next] === '');
+                document.getElementById(generateIds[step]).hidden = !visible;
+            }
+        }
+
+        function showStep(step) {
+            current = step;
+            resultTitle.textContent = titles[step];
+            result.textContent = contents[step];
+            updateButtons();
+            updateFlow();
+        }
+
+        // Colour the first-row buttons by state: the current page (blue); a step
+        // whose content is generated, plus step 01 which is always done (green);
+        // a reachable step not yet generated (amber); else unreachable (grey).
+        function updateFlow() {
+            for (const btn of document.querySelectorAll('#flow button')) {
+                const step = btn.dataset.action;
+                if (step === current) {
+                    btn.className = 'current';
+                } else if (step === 'source' || contents[step] !== '') {
+                    btn.className = 'completed';
+                } else if (!btn.disabled) {
+                    btn.className = 'reachable';
+                } else {
+                    btn.className = 'unreachable';
+                }
+            }
+        }
+
+        // First row: switch which step's content (and generate button) is shown.
+        for (const btn of document.querySelectorAll('#flow button')) {
+            btn.addEventListener('click', () => showStep(btn.dataset.action));
+        }
+
+        // Generate buttons: switch to the step's page, then ask the extension to
+        // run the matching backend function.
+        for (const step of order) {
+            document.getElementById(generateIds[step]).addEventListener('click', () => {
+                showStep(step);
+                result.textContent = 'Generating...';
+                vscode.postMessage({
+                    type: 'generate',
+                    step: step,
+                    code: code.value,
+                    invariants: contents.invariants
+                });
             });
         }
 
-        document.getElementById('generate-invariants').addEventListener('click', () => {
-            result.textContent = 'Generating...';
-            vscode.postMessage({ type: 'generateInvariants', code: code.value });
-        });
-
         window.addEventListener('message', (event) => {
             const message = event.data;
-            if (message.type === 'invariantsResult' || message.type === 'invariantsError') {
-                result.textContent = message.text;
+            if (message.type !== 'result') {
+                return;
             }
+            if (!message.ok) {
+                current = message.step;
+                resultTitle.textContent = titles[message.step];
+                result.textContent = message.text;
+                updateButtons();
+                return;
+            }
+            contents[message.step] = message.text;
+            // Enable the next step's first-row page button.
+            const next = order[order.indexOf(message.step) + 1];
+            if (next) {
+                document.querySelector('#flow button[data-action="' + next + '"]').disabled = false;
+            }
+            showStep(message.step);
+            // The button that ran becomes "Regenerate ...".
+            const ran = document.getElementById(generateIds[message.step]);
+            ran.textContent = ran.textContent.replace(/^Generate /, 'Regenerate ');
         });
+
+        updateButtons();
+        updateFlow();
     </script>
 </body>
 </html>`;

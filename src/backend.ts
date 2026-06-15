@@ -30,7 +30,8 @@ Use the smallest line range that supports the invariant. If no specific line sup
 
 }
 
-export async function query_claude(code: string, config: ClaudeConfig) {
+// TODO: Use this one
+export async function query_claude_actual(prompt: string, config: ClaudeConfig) {
     const client = new Anthropic({ apiKey: config.apiKey });
     const msg = await client.messages.create({
         model: config.model,
@@ -39,7 +40,7 @@ export async function query_claude(code: string, config: ClaudeConfig) {
         system: "You are an expert Python programmer.",
         messages: [{
             role: "user",
-            content: invariant_prompt(code)
+            content: prompt
         }],
     });
 
@@ -52,4 +53,22 @@ export async function query_claude(code: string, config: ClaudeConfig) {
         throw new Error("Claude returned no text content.");
     }
     return textBlock.text;
+}
+
+// for testing purpose only
+export async function query_invariants(code: string, config: ClaudeConfig) {
+    // await new Promise(resolve => setTimeout(resolve, 3000));
+    return "Generated result!";
+    //TODO: make it work
+}
+
+export async function query_test_cases(invariant: string, config: ClaudeConfig) {
+    // throw new Error;
+    return "Here is the test case";
+    //TODO: make it work
+}
+
+export async function query_documentation(invariants: string, code: string, config: ClaudeConfig) {
+    return "IBD goes here";
+    //TODO: make it work
 }
