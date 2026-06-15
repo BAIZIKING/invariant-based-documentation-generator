@@ -1,6 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import Anthropic from '@anthropic-ai/sdk';
 import { ClaudeConfig, query_invariants, query_test_cases, query_documentation } from './backend';
 
 // Key under which the Anthropic API key is stored in VS Code's SecretStorage.
@@ -17,6 +18,11 @@ export function activate(context: vscode.ExtensionContext) {
 			const panel = vscode.window.createWebviewPanel('IBDGenerator', 'Invariant-Based Documentation Generator', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
 			panel.webview.html = getWebViewContent(functionCode);
 
+			// Server-side conversation state for this panel: the invariants step
+			// produces a chat history that the PBT step continues from. Scoped to
+			// the panel's closure, so each panel keeps its own conversation.
+			let conversation: Anthropic.MessageParam[] = [];
+
 			panel.webview.onDidReceiveMessage(async (message) => {
 				if (message?.type !== 'generate') {
 					return;
@@ -30,11 +36,17 @@ export function activate(context: vscode.ExtensionContext) {
 				try {
 					let text: string;
 					if (step === 'invariants') {
-						text = await query_invariants(message.code, config);
+						// Start (or restart) the conversation and remember its history
+						// so the PBT step can continue from it.
+						const result = await query_invariants(message.code, config);
+						conversation = result.messages;
+						text = result.text;
 					} else if (step === 'pbt') {
-						text = await query_test_cases(message.invariants, config);
+						// Continue the invariants conversation captured above.
+						const result = await query_test_cases(message.invariants, conversation, config);
+						text = result.text;
 					} else if (step === 'documentation') {
-						text = await query_documentation(message.invariants, message.code, config);
+						text = await query_documentation(message.code, message.invariants, config);
 					} else {
 						return;
 					}
