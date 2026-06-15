@@ -15,8 +15,17 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('invariant-based-documentation-generator.generator', (functionCode: string = '') => {
-			const panel = vscode.window.createWebviewPanel('IBDGenerator', 'Invariant-Based Documentation Generator', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
-			panel.webview.html = getWebViewContent(functionCode);
+			const panel = vscode.window.createWebviewPanel('IBDGenerator', 'Invariant-Based Documentation Generator', vscode.ViewColumn.Beside, {
+				enableScripts: true,
+				retainContextWhenHidden: true,
+				// Allow the webview to load the bundled libraries and our media assets via asWebviewUri.
+				localResourceRoots: [
+					vscode.Uri.joinPath(context.extensionUri, 'node_modules', 'marked'),
+					vscode.Uri.joinPath(context.extensionUri, 'node_modules', 'dompurify'),
+					vscode.Uri.joinPath(context.extensionUri, 'media')
+				]
+			});
+			panel.webview.html = getWebViewContent(functionCode, panel.webview, context.extensionUri);
 
 			// Server-side conversation state for this panel: the invariants step
 			// produces a chat history that the PBT step continues from. Scoped to
@@ -43,10 +52,12 @@ export function activate(context: vscode.ExtensionContext) {
 						text = result.text;
 					} else if (step === 'pbt') {
 						// Continue the invariants conversation captured above.
-						const result = await query_test_cases(message.invariants, conversation, config);
+						const invariants = parseInvariants(message.invariants);
+						const result = await query_test_cases(invariants, conversation, config);
 						text = result.text;
 					} else if (step === 'documentation') {
-						text = await query_documentation(message.code, message.invariants, config);
+						const invariants = parseInvariants(message.invariants);
+						text = await query_documentation(message.code, invariants, config);
 					} else {
 						return;
 					}
@@ -94,6 +105,15 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.languages.registerCodeLensProvider({ language: 'python' }, new PythonFunctionCodeLensProvider())
 	);
+}
+
+// query_invariants returns a JSON array of objects shaped like
+// {"invariant": "...", "lineno": 10, "end_lineno": 14}. The PBT and
+// documentation steps only need the invariant text, not the line numbers, so
+// extract just the "invariant" strings.
+function parseInvariants(raw: string): string[] {
+	const parsed = JSON.parse(raw);
+	return parsed.map((item: { invariant: string }) => item.invariant);
 }
 
 // Resolves the configuration the backend needs: the model from settings and the
@@ -236,100 +256,31 @@ function escapeHtml(text: string) {
 		.replace(/>/g, '&gt;');
 }
 
-function getWebViewContent(functionCode: string) {
+function getNonce() {
+	let text = '';
+	const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+	for (let i = 0; i < 32; i++) {
+		text += possible.charAt(Math.floor(Math.random() * possible.length));
+	}
+	return text;
+}
+
+function getWebViewContent(functionCode: string, webview: vscode.Webview, extensionUri: vscode.Uri) {
+	// Webview URIs for the bundled libraries and our media assets, plus a nonce so
+	// the CSP can allow exactly our three scripts (marked, DOMPurify, main.js).
+	const markedUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'node_modules', 'marked', 'lib', 'marked.umd.js'));
+	const domPurifyUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'node_modules', 'dompurify', 'dist', 'purify.min.js'));
+	const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'main.css'));
+	const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'main.js'));
+	const nonce = getNonce();
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invariant-Based Documentation Generator</title>
-    <style>
-        html, body {
-            height: 100%;
-        }
-        body {
-            display: flex;
-            flex-direction: column;
-            font-family: var(--vscode-font-family);
-            color: var(--vscode-foreground);
-        }
-        #code {
-            flex: 0 0 auto;
-            height: 30%;
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: var(--vscode-editor-font-size, 13px);
-            color: var(--vscode-input-foreground);
-            background-color: var(--vscode-input-background);
-            border: 1px solid var(--vscode-input-border, transparent);
-            padding: 8px;
-            white-space: pre;
-			resize: vertical;
-            overflow: auto;
-			min-height: 1em;
-			margin-bottom: 8px;
-        }
-        #actions {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
-            gap: 4px;
-        }
-        #actions button {
-            color: var(--vscode-button-foreground);
-            background-color: var(--vscode-button-background);
-            border: none;
-            padding: 6px 12px;
-            cursor: pointer;
-        }
-        #actions button:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-        #flow {
-            display: flex;
-            align-items: stretch;
-            gap: 4px;
-            margin-bottom: 8px;
-        }
-        #flow button {
-            flex: 1 1 0;
-            min-width: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            white-space: nowrap;
-            font-size: 11px;
-            color: #ffffff;
-            border: none;
-            padding: 4px 6px;
-        }
-        .flow-arrow {
-            flex: 0 0 auto;
-            align-self: center;
-        }
-        #flow button.current {
-            background-color: #1f6feb;
-        }
-        #flow button.completed {
-            background-color: #2ea043;
-            cursor: pointer;
-        }
-        #flow button.reachable {
-            background-color: #9e6a03;
-            cursor: pointer;
-        }
-        #flow button.unreachable {
-            background-color: #6e7681;
-        }
-        #flow button:disabled {
-            cursor: not-allowed;
-        }
-        #result {
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow: auto;
-            border: 1px solid var(--vscode-panel-border);
-        }
-    </style>
+    <link href="${styleUri}" rel="stylesheet">
 </head>
 <body>
     <h1>Invariant-Based Documentation Generator</h1>
@@ -350,114 +301,9 @@ function getWebViewContent(functionCode: string) {
     </div>
     <h2 id="result-title">Invariants</h2>
     <div id="result"></div>
-    <script>
-        const vscode = acquireVsCodeApi();
-        const resultTitle = document.getElementById('result-title');
-        const result = document.getElementById('result');
-        const code = document.getElementById('code');
-
-        const titles = {
-            source: 'Source code',
-            invariants: 'Invariants',
-            pbt: 'Property-based test cases',
-            documentation: 'Documentation'
-        };
-        // Generate steps in order — each one enables the next page on success.
-        const order = ['invariants', 'pbt', 'documentation'];
-        const generateIds = {
-            invariants: 'generate-invariants',
-            pbt: 'generate-pbt',
-            documentation: 'generate-documentation'
-        };
-        // Generated content per step, so the first-row buttons can switch the view.
-        const contents = { source: '', invariants: '', pbt: '', documentation: '' };
-        let current = 'invariants';
-
-        // Show the current page's generate button, plus the next step's button
-        // once the current step has generated but the next one hasn't yet. Hide
-        // the rest, so a page never shows two buttons for already-generated steps.
-        function updateButtons() {
-            const next = order[order.indexOf(current) + 1];
-            for (const step of order) {
-                const visible = step === current
-                    || (step === next && contents[current] !== '' && contents[next] === '');
-                document.getElementById(generateIds[step]).hidden = !visible;
-            }
-        }
-
-        function showStep(step) {
-            current = step;
-            resultTitle.textContent = titles[step];
-            result.textContent = contents[step];
-            updateButtons();
-            updateFlow();
-        }
-
-        // Colour the first-row buttons by state: the current page (blue); a step
-        // whose content is generated, plus step 01 which is always done (green);
-        // a reachable step not yet generated (amber); else unreachable (grey).
-        function updateFlow() {
-            for (const btn of document.querySelectorAll('#flow button')) {
-                const step = btn.dataset.action;
-                if (step === current) {
-                    btn.className = 'current';
-                } else if (step === 'source' || contents[step] !== '') {
-                    btn.className = 'completed';
-                } else if (!btn.disabled) {
-                    btn.className = 'reachable';
-                } else {
-                    btn.className = 'unreachable';
-                }
-            }
-        }
-
-        // First row: switch which step's content (and generate button) is shown.
-        for (const btn of document.querySelectorAll('#flow button')) {
-            btn.addEventListener('click', () => showStep(btn.dataset.action));
-        }
-
-        // Generate buttons: switch to the step's page, then ask the extension to
-        // run the matching backend function.
-        for (const step of order) {
-            document.getElementById(generateIds[step]).addEventListener('click', () => {
-                showStep(step);
-                result.textContent = 'Generating...';
-                vscode.postMessage({
-                    type: 'generate',
-                    step: step,
-                    code: code.value,
-                    invariants: contents.invariants
-                });
-            });
-        }
-
-        window.addEventListener('message', (event) => {
-            const message = event.data;
-            if (message.type !== 'result') {
-                return;
-            }
-            if (!message.ok) {
-                current = message.step;
-                resultTitle.textContent = titles[message.step];
-                result.textContent = message.text;
-                updateButtons();
-                return;
-            }
-            contents[message.step] = message.text;
-            // Enable the next step's first-row page button.
-            const next = order[order.indexOf(message.step) + 1];
-            if (next) {
-                document.querySelector('#flow button[data-action="' + next + '"]').disabled = false;
-            }
-            showStep(message.step);
-            // The button that ran becomes "Regenerate ...".
-            const ran = document.getElementById(generateIds[message.step]);
-            ran.textContent = ran.textContent.replace(/^Generate /, 'Regenerate ');
-        });
-
-        updateButtons();
-        updateFlow();
-    </script>
+    <script nonce="${nonce}" src="${markedUri}"></script>
+    <script nonce="${nonce}" src="${domPurifyUri}"></script>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
 }

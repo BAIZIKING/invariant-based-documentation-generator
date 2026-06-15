@@ -1,0 +1,162 @@
+html, body {
+    height: 100%;
+}
+body {
+    display: flex;
+    flex-direction: column;
+    font-family: var(--vscode-font-family);
+    color: var(--vscode-foreground);
+}
+#code {
+    flex: 0 0 auto;
+    height: 30%;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--vscode-editor-font-size, 13px);
+    color: var(--vscode-input-foreground);
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+    padding: 8px;
+    white-space: pre;
+    resize: vertical;
+    overflow: auto;
+    min-height: 1em;
+    margin-bottom: 8px;
+}
+#actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+#actions button {
+    color: var(--vscode-button-foreground);
+    background-color: var(--vscode-button-background);
+    border: none;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+#actions button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+#flow {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+#flow button {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    font-size: 11px;
+    color: #ffffff;
+    border: none;
+    padding: 4px 6px;
+}
+.flow-arrow {
+    flex: 0 0 auto;
+    align-self: center;
+}
+#flow button.current {
+    background-color: #1f6feb;
+}
+#flow button.completed {
+    background-color: #2ea043;
+    cursor: pointer;
+}
+#flow button.reachable {
+    background-color: #9e6a03;
+    cursor: pointer;
+}
+#flow button.unreachable {
+    background-color: #6e7681;
+}
+#flow button:disabled {
+    cursor: not-allowed;
+}
+#result {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--vscode-panel-border);
+}
+.markdown {
+    padding: 0 12px;
+}
+.markdown h1, .markdown h2, .markdown h3 {
+    margin: 16px 0 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    padding-bottom: 4px;
+}
+.markdown p {
+    margin: 8px 0;
+}
+.markdown ul, .markdown ol {
+    padding-left: 24px;
+}
+.markdown code {
+    font-family: var(--vscode-editor-font-family, monospace);
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.markdown pre {
+    padding: 8px;
+    overflow: auto;
+    background-color: var(--vscode-textCodeBlock-background);
+    white-space: pre;
+}
+.markdown pre code {
+    padding: 0;
+    background: none;
+}
+.markdown a {
+    color: var(--vscode-textLink-foreground);
+}
+.markdown blockquote {
+    margin: 8px 0;
+    padding-left: 12px;
+    border-left: 3px solid var(--vscode-panel-border);
+}
+.invariant {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px;
+    margin: 8px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+.invariant-check {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    accent-color: #2ea043;
+}
+.invariant-text {
+    flex: 1;
+    min-width: 0;
+}
+.pbt {
+    padding: 8px;
+    margin: 8px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+.pbt-summary {
+    cursor: pointer;
+}
+.pbt-explanation {
+    margin-top: 8px;
+    white-space: pre-wrap;
+}
+.pbt-test {
+    margin-top: 8px;
+    padding: 8px;
+    overflow: auto;
+    font-family: var(--vscode-editor-font-family, monospace);
+    background-color: var(--vscode-textCodeBlock-background);
+    white-space: pre;
+}
