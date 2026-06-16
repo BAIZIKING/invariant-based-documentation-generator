@@ -19,6 +19,21 @@ const generateIds = {
 // Generated content per step, so the first-row buttons can switch the view.
 const contents = { source: '', invariants: '', pbt: '', documentation: '' };
 let current = 'invariants'; // current step
+// True while the "Generate Invariants and PBT" shortcut is mid-run, so the
+// invariants result auto-chains into PBT generation.
+let generatingBoth = false;
+// True while a generation is in flight. Generation is serialized to one at a
+// time: while busy, the generate buttons are disabled and clicks are ignored.
+let busy = false;
+
+// Toggle the busy lock and disable/enable every generate button to match.
+function setBusy(value) {
+    busy = value;
+    document.getElementById('generate-invariants-pbt').disabled = value;
+    for (const step of order) {
+        document.getElementById(generateIds[step]).disabled = value;
+    }
+}
 
 // Show the current page's generate button, plus the next step's button
 // once the current step has generated but the next one hasn't yet. Hide
@@ -30,6 +45,10 @@ function updateButtons() {
             || (step === next && contents[current] !== '' && contents[next] === '');
         document.getElementById(generateIds[step]).hidden = !visible;
     }
+    // The combined shortcut only appears on the invariants page, and only while
+    // neither invariants nor PBT has been generated yet.
+    document.getElementById('generate-invariants-pbt').hidden =
+        !(current === 'invariants' && contents.invariants === '' && contents.pbt === '');
 }
 
 // Shows the content for the step
@@ -195,6 +214,10 @@ function selectedInvariants() {
 // run the matching backend function.
 for (const step of order) {
     document.getElementById(generateIds[step]).addEventListener('click', () => {
+        if (busy) {
+            return;
+        }
+        setBusy(true);
         showStep(step);
         result.textContent = 'Generating...';
         vscode.postMessage({
@@ -206,12 +229,32 @@ for (const step of order) {
     });
 }
 
+// Combined shortcut: generate invariants, then chain into PBT once they arrive
+// (the chaining happens in the result handler when generatingBoth is set).
+document.getElementById('generate-invariants-pbt').addEventListener('click', () => {
+    if (busy) {
+        return;
+    }
+    setBusy(true);
+    generatingBoth = true;
+    showStep('invariants');
+    result.textContent = 'Generating...';
+    vscode.postMessage({
+        type: 'generate',
+        step: 'invariants',
+        code: code.value,
+        invariants: contents.invariants
+    });
+});
+
 window.addEventListener('message', (event) => {
     const message = event.data;
     if (message.type !== 'result') {
         return;
     }
     if (!message.ok) {
+        generatingBoth = false; // a failure stops the combined run
+        setBusy(false);
         current = message.step;
         resultTitle.textContent = titles[message.step];
         result.textContent = message.text;
@@ -232,6 +275,23 @@ window.addEventListener('message', (event) => {
     // The button that ran becomes "Regenerate ...".
     const ran = document.getElementById(generateIds[message.step]);
     ran.textContent = ran.textContent.replace(/^Generate /, 'Regenerate ');
+
+    // Combined shortcut: once invariants land, chain into PBT (using all the
+    // freshly generated invariants); the lock stays held across the chain.
+    if (generatingBoth && message.step === 'invariants') {
+        showStep('pbt');
+        result.textContent = 'Generating...';
+        vscode.postMessage({
+            type: 'generate',
+            step: 'pbt',
+            code: code.value,
+            invariants: selectedInvariants()
+        });
+    } else {
+        // Single generation finished, or the combined chain's PBT finished.
+        generatingBoth = false;
+        setBusy(false);
+    }
 });
 
 updateButtons();

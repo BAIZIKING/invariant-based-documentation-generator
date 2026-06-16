@@ -38,6 +38,9 @@ body {
 #actions button:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
+#actions button:disabled {
+    cursor: not-allowed;
+}
 #flow {
     display: flex;
     align-items: stretch;
