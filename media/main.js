@@ -47,6 +47,25 @@ document.getElementById('generate-invariants-pbt').addEventListener('click', () 
     });
 });
 
+// "Looks good, generate Documentation": jump straight to documentation using the
+// checked invariants (skipping PBT). Enables the documentation flow button and
+// switches to its view.
+document.getElementById('approve-documentation').addEventListener('click', () => {
+    if (state.busy) {
+        return;
+    }
+    setBusy(true);
+    document.querySelector('#flow button[data-action="documentation"]').disabled = false;
+    showStep('documentation');
+    result.textContent = 'Generating...';
+    vscode.postMessage({
+        type: 'generate',
+        step: 'documentation',
+        code: code.value,
+        invariants: selectedInvariants()
+    });
+});
+
 // Results coming back from the extension.
 window.addEventListener('message', (event) => {
     const message = event.data;

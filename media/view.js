@@ -17,7 +17,11 @@ export function showStep(step) {
     } else if (step === 'pbt') {
         rendered = renderPbtList(contents[step]);
     } else if (step === 'documentation') {
-        rendered = renderDocumentation(contents[step]);
+        // Before docs exist, show the invariants (with checkboxes) as a
+        // confirmation screen; once generated, render the Markdown.
+        rendered = contents.documentation !== ''
+            ? renderDocumentation(contents.documentation)
+            : renderInvariantList(contents.invariants);
     }
     if (!rendered) {
         result.textContent = contents[step];
@@ -32,14 +36,28 @@ export function showStep(step) {
 export function updateButtons() {
     const next = order[order.indexOf(state.current) + 1];
     for (const step of order) {
-        const visible = step === state.current
-            || (step === next && contents[state.current] !== '' && contents[next] === '');
+        let visible;
+        if (step === 'documentation') {
+            // Documentation's button is "Regenerate" — only on the documentation
+            // page, and only once documentation has been generated.
+            visible = state.current === 'documentation' && contents.documentation !== '';
+        } else {
+            visible = step === state.current
+                || (step === next && contents[state.current] !== '' && contents[next] === '');
+        }
         document.getElementById(generateIds[step]).hidden = !visible;
     }
     // The combined shortcut only appears on the invariants page, and only while
     // neither invariants nor PBT has been generated yet.
     document.getElementById('generate-invariants-pbt').hidden =
         !(state.current === 'invariants' && contents.invariants === '' && contents.pbt === '');
+
+    // "Looks good, generate Documentation" shortcut: only while documentation
+    // hasn't been generated yet, and either on the documentation page or on an
+    // invariants/pbt page that already has content.
+    const approveVisible = contents.documentation === ''
+        && (state.current === 'documentation' || contents[state.current] !== '');
+    document.getElementById('approve-documentation').hidden = !approveVisible;
 }
 
 // Colour the first-row buttons by state: the current page (blue); a step whose
@@ -65,6 +83,7 @@ export function updateFlow() {
 export function setBusy(value) {
     state.busy = value;
     document.getElementById('generate-invariants-pbt').disabled = value;
+    document.getElementById('approve-documentation').disabled = value;
     for (const step of order) {
         document.getElementById(generateIds[step]).disabled = value;
     }

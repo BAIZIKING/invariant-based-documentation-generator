@@ -41,6 +41,21 @@ body {
 #actions button:disabled {
     cursor: not-allowed;
 }
+#approve-documentation {
+    box-sizing: border-box;
+    width: 100%;
+    color: var(--vscode-button-foreground);
+    background-color: var(--vscode-button-background);
+    border: none;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+#approve-documentation:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+#approve-documentation:disabled {
+    cursor: not-allowed;
+}
 #flow {
     display: flex;
     align-items: stretch;

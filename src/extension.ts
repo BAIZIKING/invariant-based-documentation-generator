@@ -300,10 +300,11 @@ function getWebViewContent(functionCode: string, webview: vscode.Webview, extens
         <button type="button" id="generate-invariants">Generate Invariants</button>
         <button type="button" id="generate-invariants-pbt" hidden>Generate Invariants and PBT</button>
         <button type="button" id="generate-pbt" hidden>Generate Property-based test cases</button>
-        <button type="button" id="generate-documentation" hidden>Generate documentation</button>
+        <button type="button" id="generate-documentation" hidden>Regenerate documentation</button>
     </div>
     <h2 id="result-title">Invariants</h2>
     <div id="result"></div>
+    <button type="button" id="approve-documentation" hidden>Looks good, generate Documentation</button>
     <script nonce="${nonce}" src="${markedUri}"></script>
     <script nonce="${nonce}" src="${domPurifyUri}"></script>
     <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
