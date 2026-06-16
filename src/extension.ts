@@ -266,8 +266,10 @@ function getNonce() {
 }
 
 function getWebViewContent(functionCode: string, webview: vscode.Webview, extensionUri: vscode.Uri) {
-	// Webview URIs for the bundled libraries and our media assets, plus a nonce so
-	// the CSP can allow exactly our three scripts (marked, DOMPurify, main.js).
+	// Webview URIs for the bundled libraries and our media assets, plus a nonce.
+	// The CSP allows the three nonce'd top-level scripts (marked, DOMPurify, and
+	// the main.js module); main.js then imports its sibling modules (state/render/
+	// view), which the CSP permits via webview.cspSource.
 	const markedUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'node_modules', 'marked', 'lib', 'marked.umd.js'));
 	const domPurifyUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'node_modules', 'dompurify', 'dist', 'purify.min.js'));
 	const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'main.css'));
@@ -304,7 +306,7 @@ function getWebViewContent(functionCode: string, webview: vscode.Webview, extens
     <div id="result"></div>
     <script nonce="${nonce}" src="${markedUri}"></script>
     <script nonce="${nonce}" src="${domPurifyUri}"></script>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
+    <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
 }
