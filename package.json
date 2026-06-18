@@ -13,6 +13,9 @@
     "onLanguage:python"
   ],
   "main": "./out/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
   "contributes": {
     "commands": [
       {

@@ -145,7 +145,7 @@ export async function continue_claude(
 
 // Given Python source code, generate invariants. Returns the generated text
 // plus the conversation (`messages`) that produced it, so the caller can pass
-// `messages` as `prev` into query_test_cases_actual to continue the chat.
+// `messages` as `prev` into query_test_cases to continue the chat.
 export async function query_invariants(code: string, config: ClaudeConfig) {
     const prompt = invariant_prompt(code);
     const text = await query_claude(prompt, config);
@@ -169,77 +169,13 @@ export async function query_documentation(code: string, invariants: string[], co
     return query_claude(documentation_prompt(code, invariants), config);
 }
 
-// for testing purpose only
-// Signatures mirror query_invariants_actual so the stub can be swapped in/out
-// without touching callers.
-export async function query_invariants_test(code: string, config: ClaudeConfig) {
-    // await new Promise(resolve => setTimeout(resolve, 3000));
-    const text = JSON.stringify([
-        { invariant: "The output array has the same shape as the input array.", lineno: 10, end_lineno: 14 },
-        { invariant: "All elements of the returned array are non-negative.", lineno: 16, end_lineno: 18 },
-        { invariant: "Raises ValueError when the input array is empty.", lineno: 5, end_lineno: 7 },
-    ]);
-    const messages: Anthropic.MessageParam[] = [
-        { role: "user", content: invariant_prompt(code) },
-        { role: "assistant", content: text },
-    ];
-    return { text, messages };
-    //TODO: make it work
-}
-
-// Mirrors query_test_cases_actual.
-export async function query_test_cases_test(
-    invariants: string[],
-    prev: Anthropic.MessageParam[],
-    config: ClaudeConfig
-) {
-    // throw new Error;
-    const text = JSON.stringify([
-        {
-            invariant: "The output array has the same shape as the input array.",
-            explanation: "Generate arbitrarily shaped arrays and assert the result shape equals the input shape.",
-            test: "from hypothesis import given\nimport hypothesis.extra.numpy as npst\n\n@given(npst.arrays(dtype=float, shape=npst.array_shapes()))\ndef test_same_shape(a):\n    assert f(a).shape == a.shape",
-        },
-        {
-            invariant: "All elements of the returned array are non-negative.",
-            explanation: "For any input array, every element of the result must be >= 0.",
-            test: "from hypothesis import given\nimport hypothesis.extra.numpy as npst\n\n@given(npst.arrays(dtype=float, shape=npst.array_shapes()))\ndef test_non_negative(a):\n    assert (f(a) >= 0).all()",
-        },
-    ]);
-    const messages: Anthropic.MessageParam[] = [
-        ...prev,
-        { role: "user", content: test_case_prompt(invariants) },
-        { role: "assistant", content: text },
-    ];
-    return { text, messages };
-    //TODO: make it work
-}
-
-// Mirrors query_documentation_actual.
-export async function query_documentation_test(code: string, invariants: string[], config: ClaudeConfig) {
-    return `# normalize
-
-## Overview
-
-Scales an array so its elements are non-negative and preserve the input shape.
-
-## Parameters
-
-- \`a\`: the input array.
-
-## Semantic Guarantees
-
-- The output array has the same shape as the input array.
-- All elements of the returned array are non-negative.
-
-## Raises
-
-- \`ValueError\` when the input array is empty.
-
-## Examples
-
-\`\`\`python
-normalize(np.array([-1.0, 2.0]))
-\`\`\``;
-    //TODO: make it work
-}
+// Indirection layer so the test suite can run without making real (slow and
+// expensive) LLM calls. extension.ts invokes the generation functions through
+// this object rather than importing them directly; the test suite overrides
+// these fields with stub implementations that return canned data. In normal use
+// the object holds the real functions defined above.
+export const backend = {
+    query_invariants,
+    query_test_cases,
+    query_documentation,
+};

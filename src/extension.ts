@@ -1,8 +1,12 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import { spawn } from 'child_process';
 import Anthropic from '@anthropic-ai/sdk';
-import { ClaudeConfig, query_invariants, query_test_cases, query_documentation } from './backend';
+import { ClaudeConfig, backend } from './backend';
 
 // Key under which the Anthropic API key is stored in VS Code's SecretStorage.
 // SecretStorage keeps the key encrypted and out of settings.json (which is plain
@@ -33,6 +37,19 @@ export function activate(context: vscode.ExtensionContext) {
 			let conversation: Anthropic.MessageParam[] = [];
 
 			panel.webview.onDidReceiveMessage(async (message) => {
+				// Run a single generated property-based test: combine the source under
+				// test with the test function, execute it with Python, and report back
+				// to the webview keyed by the test's id.
+				if (message?.type === 'run-test') {
+					try {
+						const { ok, output } = await runPythonTest(message.code, message.test);
+						panel.webview.postMessage({ type: 'test-result', id: message.id, ok, output });
+					} catch (err) {
+						const detail = err instanceof Error ? err.message : String(err);
+						panel.webview.postMessage({ type: 'test-result', id: message.id, ok: false, output: detail });
+					}
+					return;
+				}
 				if (message?.type !== 'generate') {
 					return;
 				}
@@ -47,17 +64,17 @@ export function activate(context: vscode.ExtensionContext) {
 					if (step === 'invariants') {
 						// Start (or restart) the conversation and remember its history
 						// so the PBT step can continue from it.
-						const result = await query_invariants(message.code, config);
+						const result = await backend.query_invariants(message.code, config);
 						conversation = result.messages;
 						text = result.text;
 					} else if (step === 'pbt') {
 						// Continue the invariants conversation captured above.
 						const invariants = parseInvariants(message.invariants);
-						const result = await query_test_cases(invariants, conversation, config);
+						const result = await backend.query_test_cases(invariants, conversation, config);
 						text = result.text;
 					} else if (step === 'documentation') {
 						const invariants = parseInvariants(message.invariants);
-						text = await query_documentation(message.code, invariants, config);
+						text = await backend.query_documentation(message.code, invariants, config);
 					} else {
 						return;
 					}
@@ -107,12 +124,23 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 }
 
+// The prompt asks for raw JSON with no markdown, but models sometimes still
+// wrap their reply in a ```json ... ``` code fence. Strip a surrounding fence
+// (with or without a language tag) so JSON.parse sees just the JSON.
+function stripJsonFence(raw: string): string {
+	return raw
+		.trim()
+		.replace(/^```(?:json)?\s*/i, '')
+		.replace(/\s*```$/, '')
+		.trim();
+}
+
 // query_invariants returns a JSON array of objects shaped like
 // {"invariant": "...", "lineno": 10, "end_lineno": 14}. The PBT and
 // documentation steps only need the invariant text, not the line numbers, so
 // extract just the "invariant" strings.
 function parseInvariants(raw: string): string[] {
-	const parsed = JSON.parse(raw);
+	const parsed = JSON.parse(stripJsonFence(raw));
 	return parsed.map((item: { invariant: string }) => item.invariant);
 }
 
@@ -137,6 +165,110 @@ export async function resolveClaudeConfig(context: vscode.ExtensionContext): Pro
 	}
 
 	return { apiKey, model };
+}
+
+// Resolves the Python interpreter to run the generated tests with. Prefers the
+// interpreter the user has selected in the Microsoft Python extension (so it
+// matches the environment where hypothesis is installed); falls back to a bare
+// `python`/`python3` on the PATH when that extension isn't available.
+async function resolvePythonCommand(): Promise<string> {
+	const ext = vscode.extensions.getExtension('ms-python.python');
+	if (ext) {
+		try {
+			if (!ext.isActive) {
+				await ext.activate();
+			}
+			const api = ext.exports;
+			const envPath = api?.environments?.getActiveEnvironmentPath?.();
+			if (envPath?.path) {
+				return envPath.path;
+			}
+		} catch {
+			// Fall through to the PATH-based default below.
+		}
+	}
+	return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+// Wraps the source under test and a single generated property-based test in a
+// self-running Python script: the source is defined first, then a hypothesis
+// profile (no database, 1000 examples) is loaded, then the test, then a small
+// runner invokes every test* function (a hypothesis @given function runs when
+// called) and reports failures via a non-zero exit code. The harness names are
+// underscore-prefixed so they never collide with a test* function.
+function buildTestScript(source: string, test: string): string {
+	// The profile is loaded between the source and the test so it is active before
+	// the test's @given decorators run (they bind their settings at decoration
+	// time). It sits after the source so any `from __future__` import there stays
+	// the file's first statement. Source first also keeps line numbers stable. A
+	// test's own @settings decorator still overrides the profile.
+	return `${source}
+
+from hypothesis import settings as _ibdg_settings
+_ibdg_settings.register_profile("ibdg", max_examples=1000, database=None)
+_ibdg_settings.load_profile("ibdg")
+
+${test}
+
+if __name__ == "__main__":
+    import sys as _sys, traceback as _tb
+    _tests = [(_n, _o) for _n, _o in list(globals().items()) if _n.startswith("test") and callable(_o)]
+    _failed = 0
+    for _n, _o in _tests:
+        try:
+            _o()
+        except Exception:
+            _failed += 1
+            print("FAILED: " + _n)
+            _tb.print_exc()
+    if not _tests:
+        print("No test function was found to run.")
+        _sys.exit(1)
+    if _failed == 0:
+        print("All property-based tests passed.")
+    _sys.exit(1 if _failed else 0)
+`;
+}
+
+// Writes the combined script to a temp file, runs it with the resolved Python
+// interpreter, and resolves with whether it passed (exit code 0) plus the
+// captured stdout+stderr. The process is killed after a timeout so a pathological
+// test can't hang the panel, and the temp file is always cleaned up.
+async function runPythonTest(source: string, test: string): Promise<{ ok: boolean; output: string }> {
+	const python = await resolvePythonCommand();
+	const script = buildTestScript(source ?? '', test ?? '');
+	const file = path.join(os.tmpdir(), `ibdg_pbt_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+	await fs.promises.writeFile(file, script, 'utf8');
+
+	try {
+		return await new Promise<{ ok: boolean; output: string }>((resolve) => {
+			const child = spawn(python, [file], { windowsHide: true });
+			let out = '';
+			const append = (chunk: Buffer) => { out += chunk.toString(); };
+			child.stdout.on('data', append);
+			child.stderr.on('data', append);
+
+			// Guard against a runaway test (e.g. an accidental infinite loop).
+			const timer = setTimeout(() => {
+				child.kill();
+				out += '\nTest run timed out after 60 seconds and was stopped.';
+			}, 60000);
+
+			child.on('error', (err) => {
+				clearTimeout(timer);
+				const hint = `Could not run Python ("${python}"): ${err.message}. ` +
+					'Make sure Python and the hypothesis library are installed.';
+				resolve({ ok: false, output: hint });
+			});
+			child.on('close', (codeNum) => {
+				clearTimeout(timer);
+				const text = out.trim() || (codeNum === 0 ? 'All property-based tests passed.' : 'The test failed with no output.');
+				resolve({ ok: codeNum === 0, output: text });
+			});
+		});
+	} finally {
+		fs.promises.unlink(file).catch(() => { /* best-effort cleanup */ });
+	}
 }
 
 class PythonFunctionCodeLens extends vscode.CodeLens {
@@ -297,14 +429,15 @@ function getWebViewContent(functionCode: string, webview: vscode.Webview, extens
     </div>
     <textarea id="code" spellcheck="false" wrap="off" placeholder="Source code goes here...">${escapeHtml(functionCode)}</textarea>
     <div id="actions">
-        <button type="button" id="generate-invariants">Generate Invariants</button>
-        <button type="button" id="generate-invariants-pbt" hidden>Generate Invariants and PBT</button>
-        <button type="button" id="generate-pbt" hidden>Generate Property-based test cases</button>
-        <button type="button" id="generate-documentation" hidden>Regenerate documentation</button>
+        <button type="button" class="action" id="generate-invariants">Generate Invariants</button>
+        <button type="button" class="action" id="generate-invariants-pbt" hidden>Generate Invariants and PBT</button>
+        <button type="button" class="action" id="generate-pbt" hidden>Generate Property-based test cases</button>
+		<button type="button" class="action" id="run-all-tests" hidden>Run all tests</button>
+        <button type="button" class="action" id="generate-documentation" hidden>Regenerate documentation</button>
     </div>
     <h2 id="result-title">Invariants</h2>
     <div id="result"></div>
-    <button type="button" id="approve-documentation" hidden>Looks good, generate Documentation</button>
+    <button type="button" class="action" id="approve-documentation" hidden>Looks good, generate Documentation</button>
     <script nonce="${nonce}" src="${markedUri}"></script>
     <script nonce="${nonce}" src="${domPurifyUri}"></script>
     <script type="module" nonce="${nonce}" src="${scriptUri}"></script>

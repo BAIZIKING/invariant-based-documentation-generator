@@ -178,3 +178,50 @@ body {
     background-color: var(--vscode-textCodeBlock-background);
     white-space: pre;
 }
+.pbt-run {
+    /* Separate the button from the test block directly above it. */
+    margin-top: 2px;
+    /* Use VS Code's themed button colours so it matches the generate buttons. */
+    color: var(--vscode-button-foreground);
+    background-color: var(--vscode-button-background);
+    /* Themed buttons are flat, so remove the user-agent border. */
+    border: none;
+    /* Comfortable click target matching the other buttons' padding. */
+    padding: 6px 12px;
+    /* Show a pointer so it reads as clickable. */
+    cursor: pointer;
+}
+.pbt-run:hover {
+    /* Brighten on hover, consistent with the other buttons. */
+    background-color: var(--vscode-button-hoverBackground);
+}
+.pbt-run:disabled {
+    /* Signal that the button is inert while its test is running. */
+    cursor: not-allowed;
+}
+.pbt-output {
+    /* Gap between the run button and the result box below it. */
+    margin-top: 8px;
+    /* Inner breathing room around the output text. */
+    padding: 8px;
+    /* Scroll long tracebacks instead of overflowing the panel. */
+    overflow: auto;
+    /* Monospace so Python tracebacks line up as written. */
+    font-family: var(--vscode-editor-font-family, monospace);
+    /* Match the test block's code-block background. */
+    background-color: var(--vscode-textCodeBlock-background);
+    /* Preserve newlines/indentation but wrap overly long lines so they
+       stay readable without forcing horizontal scrolling. */
+    white-space: pre-wrap;
+    /* Break very long unbroken tokens (e.g. paths) instead of overflowing. */
+    overflow-wrap: anywhere;
+}
+.pbt-output-pass {
+    /* Green left edge marks a passing run at a glance. */
+    border-left: 3px solid #2ea043;
+}
+.pbt-output-fail {
+    /* Red left edge marks a failing run, using VS Code's error colour with a
+       static red fallback for themes that don't define it. */
+    border-left: 3px solid var(--vscode-errorForeground, #f85149);
+}

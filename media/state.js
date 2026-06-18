@@ -38,5 +38,12 @@ export const state = {
     current: 'invariants',   // which step's page is currently shown
     busy: false,             // true while a generation is in flight
     generatingBoth: false,   // true mid-run of the "Invariants and PBT" shortcut
-    invariantChecked: []     // per-invariant checkbox state, parallel to the list
+    invariantChecked: [],    // per-invariant checkbox state, parallel to the list
+    // Per-PBT-test run results, keyed by test index, so a result survives the
+    // re-render that happens when switching pages. Each value is
+    // { status: 'running' } or { status: 'done', ok, output }.
+    testResults: {},
+    // Number of test runs currently in flight. The busy lock is held while this
+    // is > 0, so "Run all tests" releases it only once every run has returned.
+    pendingTests: 0
 };

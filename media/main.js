@@ -1,7 +1,7 @@
 // Entry point: wires up the event listeners and runs the initial render.
 // Loaded as a module; it pulls in state.js, render.js, and view.js.
 import { vscode, resultTitle, result, code, titles, order, generateIds, contents, state } from './state.js';
-import { selectedInvariants } from './render.js';
+import { selectedInvariants, showTestResult, runAllTests } from './render.js';
 import { showStep, updateButtons, updateFlow, setBusy } from './view.js';
 
 // First row: switch which step's content (and generate button) is shown.
@@ -66,9 +66,20 @@ document.getElementById('approve-documentation').addEventListener('click', () =>
     });
 });
 
+// "Run all tests": run every generated PBT test at once (gated by the busy lock,
+// which runAllTests takes and releases as runs complete).
+document.getElementById('run-all-tests').addEventListener('click', () => {
+    runAllTests();
+});
+
 // Results coming back from the extension.
 window.addEventListener('message', (event) => {
     const message = event.data;
+    // A finished property-based test run: update its button and output box.
+    if (message.type === 'test-result') {
+        showTestResult(message.id, message.ok, message.output);
+        return;
+    }
     if (message.type !== 'result') {
         return;
     }
@@ -85,6 +96,10 @@ window.addEventListener('message', (event) => {
     // Fresh invariants supersede any previous checkbox selection.
     if (message.step === 'invariants') {
         state.invariantChecked = [];
+    }
+    // Freshly generated tests invalidate any previous run results.
+    if (message.step === 'pbt') {
+        state.testResults = {};
     }
     // Enable the next step's first-row page button.
     const next = order[order.indexOf(message.step) + 1];

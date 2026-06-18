@@ -58,6 +58,10 @@ export function updateButtons() {
     const approveVisible = contents.documentation === ''
         && (state.current === 'documentation' || contents[state.current] !== '');
     document.getElementById('approve-documentation').hidden = !approveVisible;
+
+    // "Run all tests" appears only on the PBT page, and only once tests exist.
+    document.getElementById('run-all-tests').hidden =
+        !(state.current === 'pbt' && contents.pbt !== '');
 }
 
 // Colour the first-row buttons by state: the current page (blue); a step whose
@@ -82,9 +86,7 @@ export function updateFlow() {
 // one generation runs at a time.
 export function setBusy(value) {
     state.busy = value;
-    document.getElementById('generate-invariants-pbt').disabled = value;
-    document.getElementById('approve-documentation').disabled = value;
-    for (const step of order) {
-        document.getElementById(generateIds[step]).disabled = value;
+    for (const button of document.getElementsByClassName('action')){
+        button.disabled = value;
     }
 }

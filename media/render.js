@@ -1,7 +1,19 @@
 // Turns each step's result text into DOM, and reads the invariant selection.
 // `marked` and `DOMPurify` are globals from the classic scripts loaded before
 // the module entry point.
-import { result, contents, state } from './state.js';
+import { vscode, result, code, contents, state } from './state.js';
+import { setBusy } from './view.js';
+
+// The prompt asks for raw JSON with no markdown, but models sometimes still
+// wrap their reply in a ```json ... ``` code fence. Strip a surrounding fence
+// (with or without a language tag) so JSON.parse — and the user — never see it.
+function stripJsonFence(text) {
+    return text
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '')
+        .trim();
+}
 
 // Parse a JSON array of {invariant, lineno, end_lineno} and append one block
 // per invariant (a checkbox plus the invariant text) to #result. Returns false
@@ -9,7 +21,7 @@ import { result, contents, state } from './state.js';
 export function renderInvariantList(text) {
     let items;
     try {
-        items = JSON.parse(text);
+        items = JSON.parse(stripJsonFence(text));
     } catch (e) {
         return false;
     }
@@ -46,14 +58,14 @@ export function renderInvariantList(text) {
 export function renderPbtList(text) {
     let items;
     try {
-        items = JSON.parse(text);
+        items = JSON.parse(stripJsonFence(text));
     } catch (e) {
         return false;
     }
     if (!Array.isArray(items)) {
         return false;
     }
-    for (const item of items) {
+    items.forEach((item, i) => {
         const entry = document.createElement('details');
         entry.className = 'pbt';
 
@@ -74,11 +86,120 @@ export function renderPbtList(text) {
             test.className = 'pbt-test';
             test.textContent = item.test;
             entry.appendChild(test);
+
+            // "Run test" button plus an output box beneath this test. Clicking
+            // asks the extension to run the source + this test with Python and
+            // post back a 'test-result' message keyed by this index.
+            const run = document.createElement('button');
+            run.type = 'button';
+            run.className = 'pbt-run action';
+            run.id = 'pbt-run-' + i;
+            run.textContent = 'Run test';
+
+            const output = document.createElement('pre');
+            output.className = 'pbt-output';
+            output.id = 'pbt-output-' + i;
+            output.hidden = true;
+
+            run.addEventListener('click', () => {
+                if (state.busy) {
+                    return;
+                }
+                setBusy(true);
+                startTestRun(i, item.test);
+            });
+
+            // Restore any prior run state so it survives the re-render that
+            // happens when the user switches pages and comes back.
+            applyTestResult(run, output, state.testResults[i]);
+
+            entry.appendChild(run);
+            entry.appendChild(output);
         }
 
         result.appendChild(entry);
-    }
+    });
     return true;
+}
+
+// Reflects a stored run result onto a test's run button and output box. Shared
+// by the initial render (restoring saved state) and the live message handler.
+function applyTestResult(run, output, stored) {
+    if (!stored) {
+        return;
+    }
+    if (stored.status === 'running') {
+        run.disabled = true;
+        output.hidden = false;
+        output.className = 'pbt-output';
+        output.textContent = 'Running...';
+        return;
+    }
+    run.disabled = false;
+    output.hidden = false;
+    output.className = 'pbt-output ' + (stored.ok ? 'pbt-output-pass' : 'pbt-output-fail');
+    output.textContent = stored.output;
+}
+
+// Kick off one test run: mark it pending, reflect "Running..." on its output box
+// if that box is currently on screen, and ask the extension to run it. The caller
+// takes the busy lock (setBusy(true)) before starting a batch; the lock is
+// released in showTestResult once every pending run has returned.
+function startTestRun(i, testCode) {
+    state.pendingTests += 1;
+    state.testResults[i] = { status: 'running' };
+    const outEl = document.getElementById('pbt-output-' + i);
+    if (outEl) {
+        outEl.hidden = false;
+        outEl.className = 'pbt-output';
+        outEl.textContent = 'Running...';
+    }
+    vscode.postMessage({ type: 'run-test', id: i, code: code.value, test: testCode });
+}
+
+// Run every generated test (wired to the "Run all tests" button). Parses the
+// stored PBT JSON — rather than reading the DOM — so it works regardless of how
+// the page is currently rendered, and fires all runnable tests at once.
+export function runAllTests() {
+    if (state.busy) {
+        return;
+    }
+    let items;
+    try {
+        items = JSON.parse(stripJsonFence(contents.pbt));
+    } catch (e) {
+        return;
+    }
+    if (!Array.isArray(items)) {
+        return;
+    }
+    const runnable = items
+        .map((item, i) => ({ item, i }))
+        .filter(({ item }) => item && item.test);
+    if (runnable.length === 0) {
+        return;
+    }
+    setBusy(true);
+    for (const { item, i } of runnable) {
+        startTestRun(i, item.test);
+    }
+}
+
+// Called from the message handler when a 'test-result' arrives: store it (so a
+// later re-render restores it) and update the matching button/output if the PBT
+// page is currently showing those elements. Releases the busy lock once the last
+// in-flight run has returned.
+export function showTestResult(id, ok, output) {
+    state.testResults[id] = { status: 'done', ok, output };
+    const runEl = document.getElementById('pbt-run-' + id);
+    const outEl = document.getElementById('pbt-output-' + id);
+    if (runEl && outEl) {
+        applyTestResult(runEl, outEl, state.testResults[id]);
+    }
+    state.pendingTests = Math.max(0, state.pendingTests - 1);
+    if (state.pendingTests === 0) {
+        setBusy(false);
+    }
 }
 
 // The documentation step returns Markdown; render it to HTML with marked, then
@@ -102,7 +223,7 @@ export function renderDocumentation(text) {
 export function selectedInvariants() {
     let items;
     try {
-        items = JSON.parse(contents.invariants);
+        items = JSON.parse(stripJsonFence(contents.invariants));
     } catch (e) {
         return contents.invariants;
     }
