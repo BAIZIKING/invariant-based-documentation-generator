@@ -62,6 +62,11 @@ export function updateButtons() {
     // "Run all tests" appears only on the PBT page, and only once tests exist.
     document.getElementById('run-all-tests').hidden =
         !(state.current === 'pbt' && contents.pbt !== '');
+
+    // "Download documentation" appears only once documentation has been
+    // generated — exactly when "approve-documentation" hides, so they share the
+    // standalone slot below the result box.
+    document.getElementById('download-documentation').hidden = contents.documentation === '';
 }
 
 // Colour the first-row buttons by state: the current page (blue); a step whose

@@ -41,7 +41,7 @@ body {
 #actions button:disabled {
     cursor: not-allowed;
 }
-#approve-documentation {
+#approve-documentation, #download-documentation {
     box-sizing: border-box;
     width: 100%;
     color: var(--vscode-button-foreground);
@@ -53,7 +53,7 @@ body {
 #approve-documentation:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
-#approve-documentation:disabled {
+#approve-documentation:disabled, #download-documentation:disabled {
     cursor: not-allowed;
 }
 #flow {

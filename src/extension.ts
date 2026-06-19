@@ -50,6 +50,11 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					return;
 				}
+				// Save the generated Markdown documentation to a file the user picks.
+				if (message?.type === 'download') {
+					await saveDocumentation(message.text);
+					return;
+				}
 				if (message?.type !== 'generate') {
 					return;
 				}
@@ -271,6 +276,47 @@ async function runPythonTest(source: string, test: string): Promise<{ ok: boolea
 	}
 }
 
+// Saves the generated Markdown documentation to a file the user chooses. The
+// default name comes from the doc's first "# <heading>" (the function name the
+// prompt emits), sanitized; it defaults into the first workspace folder. Writing
+// goes through vscode.workspace.fs so it lands on the extension-host side
+// (including in a devcontainer/remote), not just the local disk.
+async function saveDocumentation(markdown: string): Promise<void> {
+	const heading = (markdown ?? '').match(/^#\s+(.+)$/m);
+	// Strip characters that are invalid in file names on common platforms, collapse
+	// whitespace, and trim; fall back to a generic name if nothing usable remains.
+	const base = (heading?.[1] ?? '')
+		.replace(/[\\/:*?"<>|]/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+	const fileName = `${base || 'documentation'}.md`;
+
+	const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+	const defaultUri = workspaceUri
+		? vscode.Uri.joinPath(workspaceUri, fileName)
+		: vscode.Uri.file(fileName);
+
+	const target = await vscode.window.showSaveDialog({
+		defaultUri,
+		filters: { Markdown: ['md'] },
+		saveLabel: 'Save documentation'
+	});
+	if (!target) {
+		return; // user cancelled
+	}
+
+	try {
+		await vscode.workspace.fs.writeFile(target, Buffer.from(markdown ?? '', 'utf8'));
+		const choice = await vscode.window.showInformationMessage('Documentation saved.', 'Open');
+		if (choice === 'Open') {
+			await vscode.window.showTextDocument(target);
+		}
+	} catch (err) {
+		const detail = err instanceof Error ? err.message : String(err);
+		vscode.window.showErrorMessage(`Could not save documentation: ${detail}`);
+	}
+}
+
 class PythonFunctionCodeLens extends vscode.CodeLens {
 	constructor(range: vscode.Range, public readonly document: vscode.TextDocument, public readonly functionRange: vscode.Range) {
 		super(range);
@@ -438,6 +484,7 @@ function getWebViewContent(functionCode: string, webview: vscode.Webview, extens
     <h2 id="result-title">Invariants</h2>
     <div id="result"></div>
     <button type="button" class="action" id="approve-documentation" hidden>Looks good, generate Documentation</button>
+    <button type="button" class="action" id="download-documentation" hidden>Download documentation</button>
     <script nonce="${nonce}" src="${markedUri}"></script>
     <script nonce="${nonce}" src="${domPurifyUri}"></script>
     <script type="module" nonce="${nonce}" src="${scriptUri}"></script>

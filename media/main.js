@@ -72,6 +72,15 @@ document.getElementById('run-all-tests').addEventListener('click', () => {
     runAllTests();
 });
 
+// "Download documentation": hand the generated Markdown to the extension, which
+// opens a Save dialog and writes the file (the webview is sandboxed and can't).
+document.getElementById('download-documentation').addEventListener('click', () => {
+    if (state.busy || contents.documentation === '') {
+        return;
+    }
+    vscode.postMessage({ type: 'download', text: contents.documentation });
+});
+
 // Results coming back from the extension.
 window.addEventListener('message', (event) => {
     const message = event.data;
