@@ -480,6 +480,7 @@ function getWebViewContent(functionCode: string, webview: vscode.Webview, extens
         <button type="button" class="action" id="generate-pbt" hidden>Generate Property-based test cases</button>
 		<button type="button" class="action" id="run-all-tests" hidden>Run all tests</button>
         <button type="button" class="action" id="generate-documentation" hidden>Regenerate documentation</button>
+		<button type="button" id="view-raw" hidden>View Raw Markdown</button>
     </div>
     <h2 id="result-title">Invariants</h2>
     <div id="result"></div>

@@ -20,7 +20,7 @@ export function showStep(step) {
         // Before docs exist, show the invariants (with checkboxes) as a
         // confirmation screen; once generated, render the Markdown.
         rendered = contents.documentation !== ''
-            ? renderDocumentation(contents.documentation)
+            ? (state.viewRaw ? false : renderDocumentation(contents.documentation))
             : renderInvariantList(contents.invariants);
     }
     if (!rendered) {
@@ -66,7 +66,10 @@ export function updateButtons() {
     // "Download documentation" appears only once documentation has been
     // generated — exactly when "approve-documentation" hides, so they share the
     // standalone slot below the result box.
-    document.getElementById('download-documentation').hidden = contents.documentation === '';
+    document.getElementById('download-documentation').hidden = contents.documentation === '' || state.current !== 'documentation';
+
+    // same with view-raw
+    document.getElementById('view-raw').hidden = contents.documentation === '' || state.current !== 'documentation';
 }
 
 // Colour the first-row buttons by state: the current page (blue); a step whose

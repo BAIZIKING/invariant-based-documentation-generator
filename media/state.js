@@ -45,5 +45,6 @@ export const state = {
     testResults: {},
     // Number of test runs currently in flight. The busy lock is held while this
     // is > 0, so "Run all tests" releases it only once every run has returned.
-    pendingTests: 0
+    pendingTests: 0,
+    viewRaw: false // true if viewing raw markdown documentation
 };

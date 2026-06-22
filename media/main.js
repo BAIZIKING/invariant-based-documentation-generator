@@ -81,6 +81,12 @@ document.getElementById('download-documentation').addEventListener('click', () =
     vscode.postMessage({ type: 'download', text: contents.documentation });
 });
 
+// view-raw should toggle viewRaw state, and rerender the page to view raw markdown
+document.getElementById('view-raw').addEventListener('click', () => {
+    state.viewRaw = !state.viewRaw;
+    showStep('documentation');
+});
+
 // Results coming back from the extension.
 window.addEventListener('message', (event) => {
     const message = event.data;
