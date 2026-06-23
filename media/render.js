@@ -4,27 +4,14 @@
 import { vscode, result, code, contents, state } from './state.js';
 import { setBusy } from './view.js';
 
-// The prompt asks for raw JSON with no markdown, but models sometimes still
-// wrap their reply in a ```json ... ``` code fence. Strip a surrounding fence
-// (with or without a language tag) so JSON.parse — and the user — never see it.
-function stripJsonFence(text) {
-    return text
-        .trim()
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/, '')
-        .trim();
-}
-
 // Parse a JSON array of {invariant, lineno, end_lineno} and append one block
 // per invariant (a checkbox plus the invariant text) to #result. Returns false
 // if the text isn't a JSON array, so the caller can fall back to plain text.
-export function renderInvariantList(text) {
-    let items;
-    try {
-        items = JSON.parse(stripJsonFence(text));
-    } catch (e) {
+export function renderInvariantList(obj) {
+    if (!obj) {
         return false;
     }
+    let items = obj.output;
     if (!Array.isArray(items)) {
         return false;
     }
@@ -55,13 +42,11 @@ export function renderInvariantList(text) {
 // entry per item: the invariant is the always-visible summary; the explanation
 // and test function are revealed when expanded. Returns false if the text isn't
 // a JSON array so the caller can fall back to text.
-export function renderPbtList(text) {
-    let items;
-    try {
-        items = JSON.parse(stripJsonFence(text));
-    } catch (e) {
+export function renderPbtList(obj) {
+    if (!obj) {
         return false;
     }
+    let items = obj.output;
     if (!Array.isArray(items)) {
         return false;
     }
@@ -164,12 +149,10 @@ export function runAllTests() {
     if (state.busy) {
         return;
     }
-    let items;
-    try {
-        items = JSON.parse(stripJsonFence(contents.pbt));
-    } catch (e) {
+    if (!contents.pbt) {
         return;
     }
+    let items = contents.pbt.output;
     if (!Array.isArray(items)) {
         return;
     }
@@ -221,12 +204,10 @@ export function renderDocumentation(text) {
 // shape so the extension parses it the same way. Falls back to the raw text if
 // it isn't a JSON array (e.g. a placeholder or error).
 export function selectedInvariants() {
-    let items;
-    try {
-        items = JSON.parse(stripJsonFence(contents.invariants));
-    } catch (e) {
+    if (!contents.invariants) {
         return contents.invariants;
     }
+    let items = contents.invariants.output;
     if (!Array.isArray(items)) {
         return contents.invariants;
     }

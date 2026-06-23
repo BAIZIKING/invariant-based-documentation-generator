@@ -30,7 +30,7 @@ export const generateIds = {
 
 // Generated content per step, so the first-row buttons can switch the view.
 // Mutated in place (never reassigned), so it stays a const export.
-export const contents = { source: '', invariants: '', pbt: '', documentation: '' };
+export const contents = { source: undefined, invariants: undefined, pbt: undefined, documentation: undefined };
 
 // Mutable UI state, grouped in one object so other modules can both read and
 // update it (a plain `let` export would be read-only to importers).

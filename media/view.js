@@ -19,7 +19,7 @@ export function showStep(step) {
     } else if (step === 'documentation') {
         // Before docs exist, show the invariants (with checkboxes) as a
         // confirmation screen; once generated, render the Markdown.
-        rendered = contents.documentation !== ''
+        rendered = contents.documentation
             ? (state.viewRaw ? false : renderDocumentation(contents.documentation))
             : renderInvariantList(contents.invariants);
     }
@@ -40,36 +40,36 @@ export function updateButtons() {
         if (step === 'documentation') {
             // Documentation's button is "Regenerate" — only on the documentation
             // page, and only once documentation has been generated.
-            visible = state.current === 'documentation' && contents.documentation !== '';
+            visible = state.current === 'documentation' && contents.documentation;
         } else {
             visible = step === state.current
-                || (step === next && contents[state.current] !== '' && contents[next] === '');
+                || (step === next && contents[state.current] && !contents[next]);
         }
         document.getElementById(generateIds[step]).hidden = !visible;
     }
     // The combined shortcut only appears on the invariants page, and only while
     // neither invariants nor PBT has been generated yet.
     document.getElementById('generate-invariants-pbt').hidden =
-        !(state.current === 'invariants' && contents.invariants === '' && contents.pbt === '');
+        !(state.current === 'invariants' && !contents.invariants && !contents.pbt);
 
     // "Looks good, generate Documentation" shortcut: only while documentation
     // hasn't been generated yet, and either on the documentation page or on an
     // invariants/pbt page that already has content.
-    const approveVisible = contents.documentation === ''
-        && (state.current === 'documentation' || contents[state.current] !== '');
+    const approveVisible = !contents.documentation
+        && (state.current === 'documentation' || contents[state.current]);
     document.getElementById('approve-documentation').hidden = !approveVisible;
 
     // "Run all tests" appears only on the PBT page, and only once tests exist.
     document.getElementById('run-all-tests').hidden =
-        !(state.current === 'pbt' && contents.pbt !== '');
+        !(state.current === 'pbt' && contents.pbt);
 
     // "Download documentation" appears only once documentation has been
     // generated — exactly when "approve-documentation" hides, so they share the
     // standalone slot below the result box.
-    document.getElementById('download-documentation').hidden = contents.documentation === '' || state.current !== 'documentation';
+    document.getElementById('download-documentation').hidden = !contents.documentation || state.current !== 'documentation';
 
     // same with view-raw
-    document.getElementById('view-raw').hidden = contents.documentation === '' || state.current !== 'documentation';
+    document.getElementById('view-raw').hidden = !contents.documentation || state.current !== 'documentation';
 }
 
 // Colour the first-row buttons by state: the current page (blue); a step whose
@@ -80,7 +80,7 @@ export function updateFlow() {
         const step = btn.dataset.action;
         if (step === state.current) {
             btn.className = 'current';
-        } else if (step === 'source' || contents[step] !== '') {
+        } else if (step === 'source' || contents[step]) {
             btn.className = 'completed';
         } else if (!btn.disabled) {
             btn.className = 'reachable';

@@ -5,13 +5,23 @@ import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import Anthropic from '@anthropic-ai/sdk';
-import { ClaudeConfig, backend } from './backend';
+import { LLMConfig, Conversation, Provider, backend } from './backend/main';
 
-// Key under which the Anthropic API key is stored in VS Code's SecretStorage.
+// Key under which the provider API key is stored in VS Code's SecretStorage.
 // SecretStorage keeps the key encrypted and out of settings.json (which is plain
 // text and may sync across machines).
 const API_KEY_SECRET = 'invariant-based-documentation-generator.apiKey';
+
+// Per-provider defaults: the base URL for OpenAI-compatible providers (left
+// undefined for the ones that use their SDK's own default) and the environment
+// variable consulted when no key is stored in SecretStorage.
+const PROVIDER_DEFAULTS: Record<Provider, { baseURL?: string; envKey: string; envKey2?: string }> = {
+	anthropic: { envKey: 'ANTHROPIC_API_KEY' },
+	openai: { envKey: 'OPENAI_API_KEY' },
+	ollama: { baseURL: 'http://localhost:11434/v1', envKey: 'OLLAMA_API_KEY' },
+	litellm: { baseURL: 'https://ai-gateway.andrew.cmu.edu', envKey: 'LITELLM_API_KEY' },
+	gemini: {envKey: 'GOOGLE_API_KEY', envKey2: 'GEMINI_API_KEY'}
+};
 
 // This method is called when your extension is activated
 // Your extension is activated as soon as a Python file is opened (see activationEvents in package.json)
@@ -32,9 +42,10 @@ export function activate(context: vscode.ExtensionContext) {
 			panel.webview.html = getWebViewContent(functionCode, panel.webview, context.extensionUri);
 
 			// Server-side conversation state for this panel: the invariants step
-			// produces a chat history that the PBT step continues from. Scoped to
-			// the panel's closure, so each panel keeps its own conversation.
-			let conversation: Anthropic.MessageParam[] = [];
+			// produces a continuation handle that the PBT step continues from
+			// (full history for Anthropic, a previous-response id for OpenAI/Gemini).
+			// Scoped to the panel's closure, so each panel keeps its own conversation.
+			let conversation: Conversation = { messages: [] };
 
 			panel.webview.onDidReceiveMessage(async (message) => {
 				// Run a single generated property-based test: combine the source under
@@ -59,24 +70,24 @@ export function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 				const step = message.step;
-				const config = await resolveClaudeConfig(context);
+				const config = await resolveLLMConfig(context);
 				if (!config) {
-					panel.webview.postMessage({ type: 'result', step, ok: false, text: 'No Anthropic API key is set.' });
+					panel.webview.postMessage({ type: 'result', step, ok: false, text: 'No API key is set for the selected provider.' });
 					return;
 				}
 				try {
-					let text: string;
+					let text;
 					if (step === 'invariants') {
 						// Start (or restart) the conversation and remember its history
 						// so the PBT step can continue from it.
 						const result = await backend.query_invariants(message.code, config);
-						conversation = result.messages;
+						conversation = result.conversation;
 						text = result.text;
 					} else if (step === 'pbt') {
 						// Continue the invariants conversation captured above.
 						const invariants = parseInvariants(message.invariants);
 						const result = await backend.query_test_cases(invariants, conversation, config);
-						text = result.text;
+						text = result;
 					} else if (step === 'documentation') {
 						const invariants = parseInvariants(message.invariants);
 						text = await backend.query_documentation(message.code, invariants, config);
@@ -97,9 +108,9 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('invariant-based-documentation-generator.setApiKey', async () => {
 			const apiKey = await vscode.window.showInputBox({
-				title: 'Anthropic API Key',
-				prompt: 'Enter your Anthropic API key (sk-ant-...).',
-				placeHolder: 'sk-ant-...',
+				title: 'LLM Provider API Key',
+				prompt: 'Enter the API key for the selected provider (Anthropic, OpenAI, or LiteLLM gateway).',
+				placeHolder: 'sk-...',
 				password: true,
 				ignoreFocusOut: true
 			});
@@ -109,11 +120,11 @@ export function activate(context: vscode.ExtensionContext) {
 			const trimmed = apiKey.trim();
 			if (trimmed === '') {
 				await context.secrets.delete(API_KEY_SECRET);
-				vscode.window.showInformationMessage('Anthropic API key cleared.');
+				vscode.window.showInformationMessage('API key cleared.');
 				return;
 			}
 			await context.secrets.store(API_KEY_SECRET, trimmed);
-			vscode.window.showInformationMessage('Anthropic API key saved.');
+			vscode.window.showInformationMessage('API key saved.');
 		})
 	);
 
@@ -129,38 +140,39 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 }
 
-// The prompt asks for raw JSON with no markdown, but models sometimes still
-// wrap their reply in a ```json ... ``` code fence. Strip a surrounding fence
-// (with or without a language tag) so JSON.parse sees just the JSON.
-function stripJsonFence(raw: string): string {
-	return raw
-		.trim()
-		.replace(/^```(?:json)?\s*/i, '')
-		.replace(/\s*```$/, '')
-		.trim();
-}
-
 // query_invariants returns a JSON array of objects shaped like
 // {"invariant": "...", "lineno": 10, "end_lineno": 14}. The PBT and
 // documentation steps only need the invariant text, not the line numbers, so
 // extract just the "invariant" strings.
 function parseInvariants(raw: string): string[] {
-	const parsed = JSON.parse(stripJsonFence(raw));
+	const parsed = JSON.parse(raw);
 	return parsed.map((item: { invariant: string }) => item.invariant);
 }
 
-// Resolves the configuration the backend needs: the model from settings and the
-// API key from SecretStorage (falling back to the ANTHROPIC_API_KEY environment
-// variable). Returns undefined and prompts the user when no key is available.
-export async function resolveClaudeConfig(context: vscode.ExtensionContext): Promise<ClaudeConfig | undefined> {
-	const model = vscode.workspace
-		.getConfiguration('invariant-based-documentation-generator')
-		.get<string>('model', 'claude-opus-4-8');
+// Resolves the configuration the backend needs: the provider, model, and base
+// URL from settings, plus the API key from SecretStorage (falling back to the
+// provider's environment variable). Returns undefined and prompts the user when
+// a key is required but missing.
+export async function resolveLLMConfig(context: vscode.ExtensionContext): Promise<LLMConfig | undefined> {
+	const settings = vscode.workspace.getConfiguration('invariant-based-documentation-generator');
+	const provider = settings.get<Provider>('provider', 'anthropic');
+	const model = settings.get<string>('model', 'claude-opus-4-8');
+	const defaults = PROVIDER_DEFAULTS[provider];
 
-	const apiKey = (await context.secrets.get(API_KEY_SECRET)) ?? process.env.ANTHROPIC_API_KEY;
+	// A non-empty baseURL setting overrides the provider default; otherwise fall
+	// back to that default (undefined for providers that use their SDK default).
+	const baseURLSetting = settings.get<string>('baseURL', '').trim();
+	const baseURL = baseURLSetting || defaults.baseURL;
+
+	let apiKey = (await context.secrets.get(API_KEY_SECRET)) ?? process.env[defaults.envKey] ?? (defaults.envKey2 ? process.env[defaults.envKey2] : undefined);
+	// A local Ollama server ignores the key, so don't force the user to set one;
+	// the OpenAI client still needs a non-empty string, so use a placeholder.
+	if (!apiKey && provider === 'ollama') {
+		apiKey = 'ollama';
+	}
 	if (!apiKey) {
 		const choice = await vscode.window.showErrorMessage(
-			'No Anthropic API key is set. Set one to generate invariants.',
+			`No API key is set for ${provider}. Set one to generate invariants.`,
 			'Set API Key'
 		);
 		if (choice === 'Set API Key') {
@@ -169,7 +181,7 @@ export async function resolveClaudeConfig(context: vscode.ExtensionContext): Pro
 		return undefined;
 	}
 
-	return { apiKey, model };
+	return { apiKey, model, provider, baseURL };
 }
 
 // Resolves the Python interpreter to run the generated tests with. Prefers the

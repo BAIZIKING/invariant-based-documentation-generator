@@ -18,6 +18,7 @@ for (const step of order) {
             return;
         }
         setBusy(true);
+        console.log("Here! going to show step");
         showStep(step);
         result.textContent = 'Generating...';
         vscode.postMessage({
@@ -75,7 +76,7 @@ document.getElementById('run-all-tests').addEventListener('click', () => {
 // "Download documentation": hand the generated Markdown to the extension, which
 // opens a Save dialog and writes the file (the webview is sandboxed and can't).
 document.getElementById('download-documentation').addEventListener('click', () => {
-    if (state.busy || contents.documentation === '') {
+    if (state.busy || !contents.documentation) {
         return;
     }
     vscode.postMessage({ type: 'download', text: contents.documentation });
@@ -90,6 +91,8 @@ document.getElementById('view-raw').addEventListener('click', () => {
 // Results coming back from the extension.
 window.addEventListener('message', (event) => {
     const message = event.data;
+    console.log("message");
+    console.log(JSON.stringify(event.data));
     // A finished property-based test run: update its button and output box.
     if (message.type === 'test-result') {
         showTestResult(message.id, message.ok, message.output);

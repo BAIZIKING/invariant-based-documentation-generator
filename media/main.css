@@ -100,7 +100,7 @@ body {
     min-height: 0;
     overflow: auto;
     border: 1px solid var(--vscode-panel-border);
-    white-space: pre;
+    white-space: pre-wrap;
 }
 .markdown {
     padding: 0 12px;
