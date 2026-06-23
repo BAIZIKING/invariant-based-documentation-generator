@@ -3,6 +3,7 @@
 // the module entry point.
 import { vscode, result, code, contents, state } from './state.js';
 import { setBusy } from './view.js';
+import { highlightLines, clearHighlight } from './code.js';
 
 // Parse a JSON array of {invariant, lineno, end_lineno} and append one block
 // per invariant (a checkbox plus the invariant text) to #result. Returns false
@@ -18,6 +19,12 @@ export function renderInvariantList(obj) {
     items.forEach((item, i) => {
         const block = document.createElement('div');
         block.className = 'invariant';
+
+        // Highlight this invariant's source lines while the user hovers the block.
+        if (item && Number.isInteger(item.lineno) && Number.isInteger(item.end_lineno)) {
+            block.addEventListener('mouseenter', () => highlightLines(item.lineno, item.end_lineno));
+            block.addEventListener('mouseleave', clearHighlight);
+        }
 
         const check = document.createElement('input');
         check.type = 'checkbox';

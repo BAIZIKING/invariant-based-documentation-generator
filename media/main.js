@@ -3,6 +3,7 @@
 import { vscode, resultTitle, result, code, titles, order, generateIds, contents, state } from './state.js';
 import { selectedInvariants, showTestResult, runAllTests } from './render.js';
 import { showStep, updateButtons, updateFlow, setBusy } from './view.js';
+import { renderCode } from './code.js';
 
 // First row: switch which step's content (and generate button) is shown.
 for (const btn of document.querySelectorAll('#flow button')) {
@@ -148,5 +149,6 @@ window.addEventListener('message', (event) => {
 });
 
 // Initial paint.
+renderCode();
 updateButtons();
 updateFlow();

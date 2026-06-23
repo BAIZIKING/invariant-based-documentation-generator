@@ -9,6 +9,7 @@ export const vscode = acquireVsCodeApi();
 export const resultTitle = document.getElementById('result-title');
 export const result = document.getElementById('result');
 export const code = document.getElementById('code');
+export const codeView = document.getElementById('code-view');
 
 // Step titles shown above the result box.
 export const titles = {

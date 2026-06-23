@@ -485,7 +485,8 @@ function getWebViewContent(functionCode: string, webview: vscode.Webview, extens
         <span class="flow-arrow">&rarr;</span>
         <button type="button" data-action="documentation" disabled>04 Documentation</button>
     </div>
-    <textarea id="code" spellcheck="false" wrap="off" placeholder="Source code goes here...">${escapeHtml(functionCode)}</textarea>
+    <pre id="code-view"></pre>
+    <textarea id="code" spellcheck="false" wrap="off" hidden disabled>${escapeHtml(functionCode)}</textarea>
     <div id="actions">
         <button type="button" class="action" id="generate-invariants">Generate Invariants</button>
         <button type="button" class="action" id="generate-invariants-pbt" hidden>Generate Invariants and PBT</button>

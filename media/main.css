@@ -7,20 +7,27 @@ body {
     font-family: var(--vscode-font-family);
     color: var(--vscode-foreground);
 }
-#code {
+#code-view {
     flex: 0 0 auto;
     height: 30%;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--vscode-editor-font-size, 13px);
+    line-height: 1.4;
     color: var(--vscode-input-foreground);
     background-color: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border, transparent);
     padding: 8px;
-    white-space: pre;
     resize: vertical;
     overflow: auto;
     min-height: 1em;
-    margin-bottom: 8px;
+    margin: 0 0 8px;
+}
+.code-line {
+    white-space: pre;
+    min-height: 1.4em;
+}
+.code-line.highlight {
+    background-color: var(--vscode-editor-rangeHighlightBackground, rgba(255, 221, 87, 0.25));
 }
 #actions {
     display: flex;
