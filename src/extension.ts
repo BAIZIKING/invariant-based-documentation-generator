@@ -131,7 +131,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('invariant-based-documentation-generator.clearApiKey', async () => {
 			await context.secrets.delete(API_KEY_SECRET);
-			vscode.window.showInformationMessage('Anthropic API key cleared.');
+			vscode.window.showInformationMessage('API key cleared.');
 		})
 	);
 

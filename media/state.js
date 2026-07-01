@@ -33,6 +33,8 @@ export const generateIds = {
 // Mutated in place (never reassigned), so it stays a const export.
 export const contents = { source: undefined, invariants: undefined, pbt: undefined, documentation: undefined };
 
+export const content_generated = { source: true, invariants: false, pbt: false, documentation: false };
+
 // Mutable UI state, grouped in one object so other modules can both read and
 // update it (a plain `let` export would be read-only to importers).
 export const state = {

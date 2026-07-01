@@ -1,7 +1,7 @@
 // Turns each step's result text into DOM, and reads the invariant selection.
 // `marked` and `DOMPurify` are globals from the classic scripts loaded before
 // the module entry point.
-import { vscode, result, code, contents, state } from './state.js';
+import { vscode, result, code, contents, state, content_generated } from './state.js';
 import { setBusy } from './view.js';
 import { highlightLines, clearHighlight } from './code.js';
 
@@ -9,7 +9,7 @@ import { highlightLines, clearHighlight } from './code.js';
 // per invariant (a checkbox plus the invariant text) to #result. Returns false
 // if the text isn't a JSON array, so the caller can fall back to plain text.
 export function renderInvariantList(obj) {
-    if (!obj) {
+    if (!obj || !obj.output) {
         return false;
     }
     let items = obj.output;
@@ -50,7 +50,7 @@ export function renderInvariantList(obj) {
 // and test function are revealed when expanded. Returns false if the text isn't
 // a JSON array so the caller can fall back to text.
 export function renderPbtList(obj) {
-    if (!obj) {
+    if (!obj || !obj.output) {
         return false;
     }
     let items = obj.output;
@@ -156,7 +156,7 @@ export function runAllTests() {
     if (state.busy) {
         return;
     }
-    if (!contents.pbt) {
+    if (!content_generated.pbt || !contents.pbt.output) {
         return;
     }
     let items = contents.pbt.output;
@@ -211,8 +211,8 @@ export function renderDocumentation(text) {
 // shape so the extension parses it the same way. Falls back to the raw text if
 // it isn't a JSON array (e.g. a placeholder or error).
 export function selectedInvariants() {
-    if (!contents.invariants) {
-        return contents.invariants;
+    if (!content_generated.invariants) {
+        return undefined;
     }
     let items = contents.invariants.output;
     if (!Array.isArray(items)) {

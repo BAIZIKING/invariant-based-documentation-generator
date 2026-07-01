@@ -1,6 +1,6 @@
 // View logic: which page is shown, which buttons are visible/enabled, and the
 // colour of the first-row flow buttons.
-import { state, contents, titles, order, generateIds, resultTitle, result } from './state.js';
+import { state, contents, content_generated, titles, order, generateIds, resultTitle, result } from './state.js';
 import { renderInvariantList, renderPbtList, renderDocumentation } from './render.js';
 
 // Render the content for a step and refresh the buttons + flow colours.
@@ -12,16 +12,16 @@ export function showStep(step) {
     resultTitle.textContent = titles[step];
     result.textContent = '';
     let rendered = false;
-    if (step === 'invariants') {
+    if (step === 'invariants' && content_generated.invariants) {
         rendered = renderInvariantList(contents[step]);
-    } else if (step === 'pbt') {
+    } else if (step === 'pbt' && content_generated.pbt) {
         rendered = renderPbtList(contents[step]);
     } else if (step === 'documentation') {
         // Before docs exist, show the invariants (with checkboxes) as a
         // confirmation screen; once generated, render the Markdown.
-        rendered = contents.documentation
+        rendered = content_generated.documentation
             ? (state.viewRaw ? false : renderDocumentation(contents.documentation))
-            : renderInvariantList(contents.invariants);
+            : (contents.documentation ? false : renderInvariantList(contents.invariants));
     }
     if (!rendered) {
         result.textContent = contents[step];
@@ -40,36 +40,36 @@ export function updateButtons() {
         if (step === 'documentation') {
             // Documentation's button is "Regenerate" — only on the documentation
             // page, and only once documentation has been generated.
-            visible = state.current === 'documentation' && contents.documentation;
+            visible = state.current === 'documentation' && content_generated.documentation;
         } else {
             visible = step === state.current
-                || (step === next && contents[state.current] && !contents[next]);
+                || (step === next && content_generated[state.current] && !content_generated[next]);
         }
         document.getElementById(generateIds[step]).hidden = !visible;
     }
     // The combined shortcut only appears on the invariants page, and only while
     // neither invariants nor PBT has been generated yet.
     document.getElementById('generate-invariants-pbt').hidden =
-        !(state.current === 'invariants' && !contents.invariants && !contents.pbt);
+        !(state.current === 'invariants' && !content_generated.invariants && !content_generated.pbt);
 
     // "Looks good, generate Documentation" shortcut: only while documentation
     // hasn't been generated yet, and either on the documentation page or on an
     // invariants/pbt page that already has content.
-    const approveVisible = !contents.documentation
-        && (state.current === 'documentation' || contents[state.current]);
+    const approveVisible = !content_generated.documentation
+        && (state.current === 'documentation' || content_generated[state.current]);
     document.getElementById('approve-documentation').hidden = !approveVisible;
 
     // "Run all tests" appears only on the PBT page, and only once tests exist.
     document.getElementById('run-all-tests').hidden =
-        !(state.current === 'pbt' && contents.pbt);
+        !(state.current === 'pbt' && content_generated.pbt);
 
     // "Download documentation" appears only once documentation has been
     // generated — exactly when "approve-documentation" hides, so they share the
     // standalone slot below the result box.
-    document.getElementById('download-documentation').hidden = !contents.documentation || state.current !== 'documentation';
+    document.getElementById('download-documentation').hidden = !content_generated.documentation || state.current !== 'documentation';
 
     // same with view-raw
-    document.getElementById('view-raw').hidden = !contents.documentation || state.current !== 'documentation';
+    document.getElementById('view-raw').hidden = !content_generated.documentation || state.current !== 'documentation';
 }
 
 // Colour the first-row buttons by state: the current page (blue); a step whose
@@ -80,7 +80,7 @@ export function updateFlow() {
         const step = btn.dataset.action;
         if (step === state.current) {
             btn.className = 'current';
-        } else if (step === 'source' || contents[step]) {
+        } else if (step === 'source' || content_generated[step]) {
             btn.className = 'completed';
         } else if (!btn.disabled) {
             btn.className = 'reachable';

@@ -1,6 +1,6 @@
 // Entry point: wires up the event listeners and runs the initial render.
 // Loaded as a module; it pulls in state.js, render.js, and view.js.
-import { vscode, resultTitle, result, code, titles, order, generateIds, contents, state } from './state.js';
+import { vscode, resultTitle, result, code, titles, order, generateIds, contents, state, content_generated } from './state.js';
 import { selectedInvariants, showTestResult, runAllTests } from './render.js';
 import { showStep, updateButtons, updateFlow, setBusy } from './view.js';
 import { renderCode } from './code.js';
@@ -19,9 +19,8 @@ for (const step of order) {
             return;
         }
         setBusy(true);
-        console.log("Here! going to show step");
+        contents[step] = 'Generating...';
         showStep(step);
-        result.textContent = 'Generating...';
         vscode.postMessage({
             type: 'generate',
             step: step,
@@ -39,8 +38,8 @@ document.getElementById('generate-invariants-pbt').addEventListener('click', () 
     }
     setBusy(true);
     state.generatingBoth = true;
+    contents['invariants'] = 'Generating...';
     showStep('invariants');
-    result.textContent = 'Generating...';
     vscode.postMessage({
         type: 'generate',
         step: 'invariants',
@@ -58,8 +57,8 @@ document.getElementById('approve-documentation').addEventListener('click', () =>
     }
     setBusy(true);
     document.querySelector('#flow button[data-action="documentation"]').disabled = false;
+    contents['documentation'] = 'Generating...';
     showStep('documentation');
-    result.textContent = 'Generating...';
     vscode.postMessage({
         type: 'generate',
         step: 'documentation',
@@ -77,7 +76,7 @@ document.getElementById('run-all-tests').addEventListener('click', () => {
 // "Download documentation": hand the generated Markdown to the extension, which
 // opens a Save dialog and writes the file (the webview is sandboxed and can't).
 document.getElementById('download-documentation').addEventListener('click', () => {
-    if (state.busy || !contents.documentation) {
+    if (state.busy || !content_generated.documentation) {
         return;
     }
     vscode.postMessage({ type: 'download', text: contents.documentation });
@@ -92,7 +91,6 @@ document.getElementById('view-raw').addEventListener('click', () => {
 // Results coming back from the extension.
 window.addEventListener('message', (event) => {
     const message = event.data;
-    console.log("message");
     console.log(JSON.stringify(event.data));
     // A finished property-based test run: update its button and output box.
     if (message.type === 'test-result') {
@@ -102,16 +100,18 @@ window.addEventListener('message', (event) => {
     if (message.type !== 'result') {
         return;
     }
+    contents[message.step] = message.text;
     if (!message.ok) {
         state.generatingBoth = false; // a failure stops the combined run
         setBusy(false);
         state.current = message.step;
         resultTitle.textContent = titles[message.step];
-        result.textContent = message.text;
+        result.textContent = contents[message.step];
         updateButtons();
         return;
+    } else {
+        content_generated[message.step] = true;
     }
-    contents[message.step] = message.text;
     // Fresh invariants supersede any previous checkbox selection.
     if (message.step === 'invariants') {
         state.invariantChecked = [];
@@ -133,8 +133,8 @@ window.addEventListener('message', (event) => {
     // Combined shortcut: once invariants land, chain into PBT (using all the
     // freshly generated invariants); the lock stays held across the chain.
     if (state.generatingBoth && message.step === 'invariants') {
+        contents['pbt'] = 'Generating...';
         showStep('pbt');
-        result.textContent = 'Generating...';
         vscode.postMessage({
             type: 'generate',
             step: 'pbt',

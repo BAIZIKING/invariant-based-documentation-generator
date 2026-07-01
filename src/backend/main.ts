@@ -99,27 +99,31 @@ function continue_llm(prompt: string, prev: Conversation, config: LLMConfig, for
 }
 
 export function invariant_prompt(source: string) {
-    return `You are extracting candidate invariants for property-based testing and invariant-based documentation.
+    return `Your task is to extract invariants and properties from a Python function. An invariant is defined as a property that holds true across all valid executions — covering inputs, outputs, state changes, exceptions raised, and boundary conditions.
 
-Source code:
+<source_code> 
 ${source}
+</source_code>
 
-Task:
-Identify 5 to 8 high-value semantic invariants that are directly supported by the source code and its docstring.
+<goal>
+Identify a few invariants that can be directly supported by the source code and its docstring, if present. For each invariant, provide the minimal contiguous line range that justifies it. If no precise supporting region exists, set lineno and end_lineno to null.
+</goal>
 
-Requirements:
-- Focus on observable behavior users can rely on.
-- Include preconditions when a property is not valid for every input.
-- Prefer strong API contracts over vague restatements.
-- Include edge cases suggested by branches, exceptions, dtype, shape, axis handling, return values, or version notes.
-- Do not invent behavior not supported by the source code.
-- Do not write tests.
-- Include 1-based source line metadata when possible.
+<success_criteria>
+- Holistic: The returned invariants should collectively cover as many observable behaviors as possible, including but not limited to: normal execution, exceptional execution, edge cases, different branches, return values, state changes, input constraints.
+- Sound: every invariant must be directly supported by the source. Do not infer behavior that is not present.
+- Precise line numbers: the cited lines must be the tightest range that directly supports the invariant, with no extraneous lines included.
+- Testable: each invariant must be expressible as a falsifiable assertion or test condition.
+- Do not duplicate invariants that describe the same behavior.
+- Prefer fewer high-quality invariants over many weak ones.
+</success_criteria>
 
-Return ONLY a JSON array. Each item should be:
-{"invariant": "...", "lineno": 10, "end_lineno": 14}
-
-Use the smallest line range that supports the invariant. If no specific line supports it, use null for lineno and end_lineno. No markdown, no commentary.`;
+<output_format>
+Return a JSON array where each item is formatted as follows:
+{"invariant": <string>, "lineno": <integer or null>, "end_lineno": <integer or null>}
+Where “invariant” is the plain text of the invariant, lineno is the starting line number of the supporting code segment, and end_lineno is the ending line number.
+</output_format>
+`;
 
 }
 
