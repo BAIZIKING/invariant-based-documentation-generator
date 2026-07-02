@@ -97,6 +97,8 @@ window.addEventListener('message', (event) => {
         showTestResult(message.id, message.ok, message.output);
         return;
     }
+
+    // generated result came back
     if (message.type !== 'result') {
         return;
     }

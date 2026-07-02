@@ -92,6 +92,8 @@
     "@types/vscode": "^1.120.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
+    "@types/jsdom": "^21.1.7",
+    "jsdom": "^25.0.1",
     "typescript-eslint": "^8.56.1",
     "eslint": "^9.39.3",
     "typescript": "^5.9.3",
