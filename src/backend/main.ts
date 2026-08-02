@@ -99,21 +99,21 @@ function continue_llm(prompt: string, prev: Conversation, config: LLMConfig, for
 }
 
 export function invariant_prompt(source: string) {
-    return `Your task is to extract invariants and properties from a Python function. An invariant is defined as a property that holds true across all valid executions — covering inputs, outputs, state changes, exceptions raised, and boundary conditions.
+    return `Your task is to extract invariants and properties from a Python function. An invariant is defined as a property of the source code that holds true across all valid executions — covering inputs, outputs, state changes, exceptions raised, and boundary conditions.
 
 <source_code> 
 ${source}
 </source_code>
 
 <goal>
-Identify a few invariants that can be directly supported by the source code and its docstring, if present. For each invariant, provide the minimal contiguous line range that justifies it. If no precise supporting region exists, set lineno and end_lineno to null.
+Identify a few high-quality invariants that can be directly supported by the source code and its docstring, if present. For each invariant, provide the minimal contiguous line range that justifies it. If no precise supporting region exists, set lineno and end_lineno to null.
 </goal>
 
 <success_criteria>
 - Holistic: The returned invariants should collectively cover as many observable behaviors as possible, including but not limited to: normal execution, exceptional execution, edge cases, different branches, return values, state changes, input constraints.
-- Sound: every invariant must be directly supported by the source. Do not infer behavior that is not present.
+- Sound: every invariant must be directly supported by the source code. Do not infer behavior that is not present.
 - Precise line numbers: the cited lines must be the tightest range that directly supports the invariant, with no extraneous lines included.
-- Testable: each invariant must be expressible as a falsifiable assertion or test condition.
+- Testable: each invariant must be expressible as a falsifiable assertion or test condition, and it should be possible to test each invariant by writing property-based tests. 
 - Do not duplicate invariants that describe the same behavior.
 - Prefer fewer high-quality invariants over many weak ones.
 </success_criteria>
@@ -128,37 +128,56 @@ Where “invariant” is the plain text of the invariant, lineno is the starting
 }
 
 export function test_case_prompt(invariants: string[]) {
-    return `I have chosen these invariants to develop property based test cases and include in the final invariant-based documentation: ${invariants}
-Now, for each of the invariants that I have chosen, generate exactly one property-based test function verifying that the source code satisfies the invariant using the hypothesis library. Also provide a little explanation in plain text. 
-Return only a JSON array, where each item follows the format below:
-{"invariant": "...", "explanation": "...", "test": "..."}
-where "invariant" is the exact same text of the invariant being evaluated, 
-"explanation" is the explanation that you should provide in plain text, and
-"test" is the test function that you write using the hypothesis library, which should include the necessary import statements.
-The order of the items in the json array that you return should match the order of invariants passed to you.`;
+    return `I have chosen these invariants:
+
+${invariants.map(inv => `- ${inv}`).join("\n")}
+
+For each invariant, generate exactly one property-based test using Hypothesis.
+Imports rules:
+
+- DO: import any Python standard-library module (math, re, datetime, collections, itertools, ...) plus:
+    from hypothesis import given
+    from hypothesis import strategies as st
+- DON'T: any import of the implementation module or of the function under test.
+
+The function under test is already defined earlier in the same file and is in scope. Import it and the test will fail. Call it directly by name.
+
+Return a JSON array. Each item must be:
+
+{
+  "invariant": "<exact invariant text>",
+  "explanation": "<plain English explanation>",
+  "test": "<complete test code>"
+}
+
+The order of items must exactly match the order of the supplied invariants.`;
 
 }
 
 export function documentation_prompt(source: string, invariants: string[]) {
-    return `Generate publishable Markdown documentation for the function defined in the source code below.
+    return `Your task is to generate publishable Markdown documentation for the function defined below.
 
-Source code:
+<source_code>
 ${source}
+</source_code>
 
-Human-approved semantic invariants:
+<approved_invariants>
 ${invariants.map(inv => `- ${inv}`).join("\n")}
+</approved_invariants>
 
-Important:
-- Do not mention prompts, validity scores, soundness scores, mutation scores, or testing methodology.
-- Use the approved invariants as semantic guarantees.
-- Derive the documentation from the source code, including docstring facts, branches, exceptions, and return behavior.
-- Be careful around behavior that depends on dtype, endpoint, axis, version, platform, or input validity.
+<instructions>
+Generate publishable documentation in markdown format for the function defined in the source code.
+Follow PEP 257 docstring convention, which states that your documentation should start with "a summary line just like a one-line docstring, followed by a blank line, followed by a more elaborate description", and that your documentation should "should summarize its behavior and document its arguments, return value(s), side effects, exceptions raised, and restrictions on when it can be called (all if applicable). Optional arguments should be indicated. It should be documented whether keyword arguments are part of the interface."
+Treat the items in <approved_invariants> as ground-truth semantic guarantees about the function's behavior. Incorporate them into the relevant sections (Semantic Guarantees, Edge Cases, Raises) without restating them verbatim as a list — integrate them into natural, readable prose or bullet points appropriate to each section. Do not invent behavior not supported by the source code, docstring, or approved invariants.
+Use plain, professional technical-writing tone.
+Be careful around behavior that depends on dtype, endpoint, axis, version, platform, or input validity.
+</instructions>
 
-Output exactly this Markdown structure (replace the heading with the actual function name):
+<output_format>
+Return ONLY the Markdown documentation. No preamble, no explanation, no code fences wrapping the whole output. Below is the structure of the documentation that you should follow. Omit any section entirely if it has nothing meaningful to say for this function (e.g. omit "Raises" if the function raises no exceptions, omit "Edge Cases" if none are evidenced), but your documentation should always contain the function name, function summary, parameters, return, and example(s).
 
 # <function name>
-
-## Overview
+<one-line PEP 257 style summary, plus extended description if needed>
 
 ## Parameters
 
@@ -172,7 +191,8 @@ Output exactly this Markdown structure (replace the heading with the actual func
 
 ## Examples
 
-## Notes`;
+## Notes
+</output_format>`;
 }
 
 
